@@ -7,12 +7,24 @@ use esp_hal::analog::adc;
 use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
 use esp_hal::delay::Delay;
 use esp_hal::gpio::DriveMode::PushPull;
-use esp_hal::gpio::Level::High;
+use esp_hal::gpio::Level::{High, Low};
 use esp_hal::i2c::master::{BusTimeout, Config, I2c};
 use esp_hal::main;
+use esp_hal::spi::{ master::{Spi, Config as SpiConfig } };
+use esp_hal::spi::Mode;
 use esp_hal::time::{Duration, Instant, Rate};
 use esp_hal::timer::timg::TimerGroup;
 use log::info;
+use embedded_hal_bus::spi::ExclusiveDevice;
+
+
+use embedded_graphics::{
+    pixelcolor::Rgb565,
+    prelude::*,
+};
+use embedded_graphics::framebuffer::buffer_size;
+use mipidsi::{models::ST7789, Builder};
+use mipidsi::interface::SpiInterface;
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -83,9 +95,53 @@ fn main() -> ! {
     // have to turn on the board and wait 500ms before using the keyboard
     let mut board_power = Output::new(peripherals.GPIO10, High, OutputConfig::default());
     board_power.set_high();
+
+
+    // ==== display setup ====
+    // https://github.com/Xinyuan-LilyGO/T-Deck/blob/master/examples/HelloWorld/HelloWorld.ino
+
+    // set TFT CS to high
+    let mut tft_cs = Output::new(peripherals.GPIO12, High, OutputConfig::default());
+    tft_cs.set_high();
+
+    let mut tft_miso = Input::new(peripherals.GPIO38, InputConfig::default().with_pull(Pull::Up));
+    let mut tft_sck = peripherals.GPIO40;
+    let mut tft_mosi = peripherals.GPIO41;
+    let mut tft_dc = Output::new(peripherals.GPIO11, Low, OutputConfig::default());
+    let mut tft_enable = Output::new(peripherals.GPIO42, High, OutputConfig::default());
+    tft_enable.set_high();
+
+    info!("creating spi device");
+    let mut spi = Spi::new(peripherals.SPI2, SpiConfig::default()
+        .with_frequency(Rate::from_mhz(40))
+        .with_mode(Mode::_0)
+    ).unwrap()
+        .with_sck(tft_sck)
+        .with_miso(tft_miso)
+        .with_mosi(tft_mosi)
+    ;
+
+    let mut buffer = [0u8; 320*240*2];
+
+    info!("setting up the display");
+    let spi_delay = Delay::new();
+    // let spi_device = ExclusiveDevice::new(spi, cs_output, spi_delay).unwrap();
+    let spi_device = ExclusiveDevice::new(spi, tft_cs, spi_delay).unwrap();
+    let di = SpiInterface::new(spi_device, tft_dc, &mut buffer);
+    info!("building");
+    let mut display = Builder::new(ST7789,di)
+        .reset_pin(tft_enable)
+        .display_size(320,240)
+        .init(&mut delay).unwrap();
+
+    info!("initizlied");
+    // wait for everything to boot up
     delay.delay_millis(500);
-    
-    
+    display.clear(Rgb565::RED);
+
+    info!("Display initialized");
+
+    /*
     let mut i2c = I2c::new(
         peripherals.I2C0,
         Config::default().with_frequency(Rate::from_khz(100)).with_timeout(BusTimeout::Disabled),
@@ -103,14 +159,14 @@ fn main() -> ! {
         buf[1] = val;
         let mut resp = i2c.write(LILYGO_KB_I2C_ADDRESS,&buf);
         info!("response {:?}",resp);
-        delay.delay_millis(100);
+        delay.delay_millis(10);
     }
 
     // buf[1] = 0x99;
     // resp = i2c.write(LILYGO_KB_I2C_ADDRESS,&buf);
     // info!("response {:?}",resp);
     // delay.delay_millis(500);
-    // 
+    //
     // buf[1] = 0xFF;
     // resp = i2c.write(LILYGO_KB_I2C_ADDRESS,&buf);
     // info!("response {:?}",resp);
@@ -151,9 +207,9 @@ fn main() -> ! {
         }
     }
 
+*/
 
-
-    // loop_helloworld_forever();
+    loop_helloworld_forever();
     // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.0.0-beta.0/examples/src/bin
 }
 
