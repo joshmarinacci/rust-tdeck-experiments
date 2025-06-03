@@ -95,6 +95,7 @@ fn main() -> ! {
     // have to turn on the board and wait 500ms before using the keyboard
     let mut board_power = Output::new(peripherals.GPIO10, High, OutputConfig::default());
     board_power.set_high();
+    delay.delay_millis(1000);
 
 
     // ==== display setup ====
@@ -103,11 +104,10 @@ fn main() -> ! {
     // set TFT CS to high
     let mut tft_cs = Output::new(peripherals.GPIO12, High, OutputConfig::default());
     tft_cs.set_high();
-
-    let mut tft_miso = Input::new(peripherals.GPIO38, InputConfig::default().with_pull(Pull::Up));
-    let mut tft_sck = peripherals.GPIO40;
-    let mut tft_mosi = peripherals.GPIO41;
-    let mut tft_dc = Output::new(peripherals.GPIO11, Low, OutputConfig::default());
+    let tft_miso = Input::new(peripherals.GPIO38, InputConfig::default().with_pull(Pull::Up));
+    let tft_sck = peripherals.GPIO40;
+    let tft_mosi = peripherals.GPIO41;
+    let tft_dc = Output::new(peripherals.GPIO11, Low, OutputConfig::default());
     let mut tft_enable = Output::new(peripherals.GPIO42, High, OutputConfig::default());
     tft_enable.set_high();
 
@@ -120,12 +120,10 @@ fn main() -> ! {
         .with_miso(tft_miso)
         .with_mosi(tft_mosi)
     ;
-
-    let mut buffer = [0u8; 320*240*2];
+    let mut buffer = [0u8; 512];
 
     info!("setting up the display");
     let spi_delay = Delay::new();
-    // let spi_device = ExclusiveDevice::new(spi, cs_output, spi_delay).unwrap();
     let spi_device = ExclusiveDevice::new(spi, tft_cs, spi_delay).unwrap();
     let di = SpiInterface::new(spi_device, tft_dc, &mut buffer);
     info!("building");
@@ -134,7 +132,7 @@ fn main() -> ! {
         .display_size(320,240)
         .init(&mut delay).unwrap();
 
-    info!("initizlied");
+    info!("initted");
     // wait for everything to boot up
     delay.delay_millis(500);
     display.clear(Rgb565::RED);
