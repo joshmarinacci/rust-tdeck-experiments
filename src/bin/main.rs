@@ -62,13 +62,6 @@ fn main() -> ! {
     // testTrackballButtonForever(button);
     
 
-    // let tdeck_track_up = Input::new(peripherals.GPIO15,InputConfig::default().with_pull(Pull::Down));//.pins.gpio3.into_pull_up_input(); // G01  GS1
-    // loop {
-    //
-    //     info!("track up {} ", tdeck_track_up.is_high());
-    //     let delay_start = Instant::now();
-    //     while delay_start.elapsed() < Duration::from_millis(200) {}
-    // }
 
 
     // === read the battery value
@@ -100,6 +93,46 @@ fn main() -> ! {
         .unwrap()
         .with_sda(peripherals.GPIO18)
         .with_scl(peripherals.GPIO8);
+
+
+    info!("turning on the keyboard backlight");
+    let mut buf = [0u8; 2];
+    buf[0] = 0x02;
+
+    for val in 0..255 {
+        buf[1] = val;
+        let mut resp = i2c.write(LILYGO_KB_I2C_ADDRESS,&buf);
+        info!("response {:?}",resp);
+        delay.delay_millis(100);
+    }
+
+    // buf[1] = 0x99;
+    // resp = i2c.write(LILYGO_KB_I2C_ADDRESS,&buf);
+    // info!("response {:?}",resp);
+    // delay.delay_millis(500);
+    // 
+    // buf[1] = 0xFF;
+    // resp = i2c.write(LILYGO_KB_I2C_ADDRESS,&buf);
+    // info!("response {:?}",resp);
+    // delay.delay_millis(500);
+
+
+    let tdeck_trackball_right = Input::new(peripherals.GPIO15, InputConfig::default().with_pull(Pull::Down));//.pins.gpio3.into_pull_up_input(); // G01  GS1
+    let tdeck_trackball_left = Input::new(peripherals.GPIO1, InputConfig::default().with_pull(Pull::Down));//.pins.gpio3.into_pull_up_input(); // G01  GS1
+    let mut last_right_high = false;
+    let mut last_left_high = false;
+    loop {
+        if(tdeck_trackball_right.is_high() != last_right_high) {
+            info!("trackball right changed ");
+            last_right_high = tdeck_trackball_right.is_high();
+        }
+        if(tdeck_trackball_left.is_high() != last_left_high) {
+            info!("trackball left changed ");
+            last_left_high = tdeck_trackball_left.is_high();
+        }
+        let delay_start = Instant::now();
+        while delay_start.elapsed() < Duration::from_millis(1) {}
+    }
 
     info!("looping over the keyboard");
     loop {
