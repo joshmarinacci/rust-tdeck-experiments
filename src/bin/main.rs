@@ -32,12 +32,15 @@ fn main() -> ! {
         peripherals.RADIO_CLK,
     )
     .unwrap();
+    
+    loop_helloworld_forever();
+    // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.0.0-beta.0/examples/src/bin
+}
 
+fn loop_helloworld_forever() -> ! {
     loop {
         info!("Hello world!");
         let delay_start = Instant::now();
         while delay_start.elapsed() < Duration::from_millis(500) {}
     }
-
-    // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.0.0-beta.0/examples/src/bin
 }
