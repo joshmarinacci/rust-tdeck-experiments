@@ -114,7 +114,7 @@ fn main() -> ! {
     info!("creating spi device");
     let mut spi = Spi::new(peripherals.SPI2, SpiConfig::default()
         .with_frequency(Rate::from_mhz(40))
-        .with_mode(Mode::_0)
+        // .with_mode(Mode::_0)
     ).unwrap()
         .with_sck(tft_sck)
         .with_miso(tft_miso)
@@ -129,13 +129,19 @@ fn main() -> ! {
     info!("building");
     let mut display = Builder::new(ST7789,di)
         .reset_pin(tft_enable)
-        .display_size(320,240)
+        .display_size(240,320)
+        // .display_size(320,240)
         .init(&mut delay).unwrap();
 
     info!("initted");
     // wait for everything to boot up
-    delay.delay_millis(500);
-    display.clear(Rgb565::RED);
+    // delay.delay_millis(500);
+    for n in 1..10 {
+        display.clear(Rgb565::RED).unwrap();
+        delay.delay_millis(500);
+        display.clear(Rgb565::BLUE).unwrap();
+        delay.delay_millis(500);
+    }
 
     info!("Display initialized");
 
