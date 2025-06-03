@@ -25,6 +25,7 @@ use embedded_graphics::{
 use embedded_graphics::framebuffer::buffer_size;
 use mipidsi::{models::ST7789, Builder};
 use mipidsi::interface::SpiInterface;
+use mipidsi::options::{ColorInversion, ColorOrder};
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -128,8 +129,10 @@ fn main() -> ! {
     let di = SpiInterface::new(spi_device, tft_dc, &mut buffer);
     info!("building");
     let mut display = Builder::new(ST7789,di)
-        .reset_pin(tft_enable)
+        // .reset_pin(tft_enable)
         .display_size(240,320)
+        .invert_colors(ColorInversion::Inverted)
+        .color_order(ColorOrder::Rgb)
         // .display_size(320,240)
         .init(&mut delay).unwrap();
 
@@ -137,10 +140,25 @@ fn main() -> ! {
     // wait for everything to boot up
     // delay.delay_millis(500);
     for n in 1..10 {
+        display.clear(Rgb565::BLACK).unwrap();
+        info!("black");
+        delay.delay_millis(1000);
+
+        display.clear(Rgb565::WHITE).unwrap();
+        info!("white");
+        delay.delay_millis(1000);
+
         display.clear(Rgb565::RED).unwrap();
-        delay.delay_millis(500);
+        info!("red");
+        delay.delay_millis(1000);
+
+        display.clear(Rgb565::GREEN).unwrap();
+        info!("green");
+        delay.delay_millis(1000);
+
         display.clear(Rgb565::BLUE).unwrap();
-        delay.delay_millis(500);
+        info!("blue");
+        delay.delay_millis(1000);
     }
 
     info!("Display initialized");
