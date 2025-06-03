@@ -2,9 +2,15 @@
 #![no_main]
 
 use esp_hal::clock::CpuClock;
-use esp_hal::gpio::{GpioPin, Input, InputConfig, Pull};
+use esp_hal::gpio::{GpioPin, Input, InputConfig, Io, Output, OutputConfig, Pull};
+use esp_hal::analog::adc;
+use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
+use esp_hal::delay::Delay;
+use esp_hal::gpio::DriveMode::PushPull;
+use esp_hal::gpio::Level::High;
+use esp_hal::i2c::master::{BusTimeout, Config, I2c};
 use esp_hal::main;
-use esp_hal::time::{Duration, Instant};
+use esp_hal::time::{Duration, Instant, Rate};
 use esp_hal::timer::timg::TimerGroup;
 use log::info;
 
@@ -28,14 +34,14 @@ fn main() -> ! {
 
     esp_alloc::heap_allocator!(size: 72 * 1024);
 
-    let timg0 = TimerGroup::new(peripherals.TIMG0);
-    let _init = esp_wifi::init(
-        timg0.timer0,
-        esp_hal::rng::Rng::new(peripherals.RNG),
-        peripherals.RADIO_CLK,
-    )
-    .unwrap();
-    
+    // let timg0 = TimerGroup::new(peripherals.TIMG0);
+    // let _init = esp_wifi::init(
+    //     timg0.timer0,
+    //     esp_hal::rng::Rng::new(peripherals.RNG),
+    //     peripherals.RADIO_CLK,
+    // )
+    // .unwrap();
+
 
     // let io = IO::new(peripherals.GPIO, peripherals.IO_MUX);
     // let i2c0_raw = I2C::new(
@@ -48,13 +54,71 @@ fn main() -> ! {
     // );
     // let i2c0_bus: &'static _ = shared_bus::new_xtensa!(I2c0RawBusType = i2c0_raw).unwrap();
     // let i2c0_proxy = i2c0_bus.acquire_i2c();
-    
-    
+
+
     // trackball click
     // let tdeck_track_click:GpioPin<Input<Pull>,0> = io.pins.gpio0.into_pull_up_input();
-    let button = Input::new(peripherals.GPIO0,InputConfig::default().with_pull(Pull::Up));
-    testTrackballButtonForever(button);
+    // let button = Input::new(peripherals.GPIO0,InputConfig::default().with_pull(Pull::Up));
+    // testTrackballButtonForever(button);
     
+
+    // let tdeck_track_up = Input::new(peripherals.GPIO15,InputConfig::default().with_pull(Pull::Down));//.pins.gpio3.into_pull_up_input(); // G01  GS1
+    // loop {
+    //
+    //     info!("track up {} ", tdeck_track_up.is_high());
+    //     let delay_start = Instant::now();
+    //     while delay_start.elapsed() < Duration::from_millis(200) {}
+    // }
+
+
+    // === read the battery value
+    // let analog_pin = peripherals.GPIO4;
+    // let mut adc_config = AdcConfig::new();
+    // let mut pin = adc_config.enable_pin(analog_pin, Attenuation::_11dB);
+    // let mut adc1 = Adc::new(peripherals.ADC2, adc_config);
+    let mut delay = Delay::new();
+    //
+    // loop {
+    //     info!("getting the pin value");
+    //     // let pin_value = bat_adc.read_oneshot(&mut pin);
+    //     // let pin_value: u16 = nb::block!(adc1.read_oneshot(&mut pin)).unwrap();
+    //     let pin_value: u16 = adc1.read_oneshot(&mut pin).unwrap();
+    //     info!("bat adc is {} ", pin_value);
+    //     delay.delay_millis(1500);
+    // }
+
+    // have to turn on the board and wait 500ms before using the keyboard
+    let mut board_power = Output::new(peripherals.GPIO10, High, OutputConfig::default());
+    board_power.set_high();
+    delay.delay_millis(500);
+    
+    
+    let mut i2c = I2c::new(
+        peripherals.I2C0,
+        Config::default().with_frequency(Rate::from_khz(100)).with_timeout(BusTimeout::Disabled),
+    )
+        .unwrap()
+        .with_sda(peripherals.GPIO18)
+        .with_scl(peripherals.GPIO8);
+
+    info!("looping over the keyboard");
+    loop {
+        let mut data = [0u8; 1];
+        let kb_res = i2c.read(LILYGO_KB_I2C_ADDRESS, &mut data);
+        match kb_res {
+            Ok(kb_res) => {
+                if(data[0] != 0x00) {
+                    info!("kb_res = {:?}", data);
+                }
+            },
+            Err(e) => {
+                info!("kb_res = {}", e);
+                delay.delay_millis(1000);
+            }
+        }
+    }
+
+
 
     // loop_helloworld_forever();
     // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/esp-hal-v1.0.0-beta.0/examples/src/bin
