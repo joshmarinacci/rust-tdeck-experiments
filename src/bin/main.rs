@@ -21,6 +21,8 @@ use embedded_hal_bus::spi::ExclusiveDevice;
 use embedded_graphics::{
     pixelcolor::Rgb565,
     prelude::*,
+    text::Text,
+    mono_font::{ ascii::FONT_6X10, MonoTextStyle}
 };
 use embedded_graphics::framebuffer::buffer_size;
 use mipidsi::{models::ST7789, Builder};
@@ -139,26 +141,15 @@ fn main() -> ! {
     info!("initted");
     // wait for everything to boot up
     // delay.delay_millis(500);
+    let colors = [Rgb565::BLACK, Rgb565::WHITE, Rgb565::RED, Rgb565::GREEN, Rgb565::BLUE];
+    let style = MonoTextStyle::new(&FONT_6X10, Rgb565::WHITE);
     for n in 1..10 {
-        display.clear(Rgb565::BLACK).unwrap();
-        info!("black");
-        delay.delay_millis(1000);
-
-        display.clear(Rgb565::WHITE).unwrap();
-        info!("white");
-        delay.delay_millis(1000);
-
-        display.clear(Rgb565::RED).unwrap();
-        info!("red");
-        delay.delay_millis(1000);
-
-        display.clear(Rgb565::GREEN).unwrap();
-        info!("green");
-        delay.delay_millis(1000);
-
-        display.clear(Rgb565::BLUE).unwrap();
-        info!("blue");
-        delay.delay_millis(1000);
+        for color in colors.iter() {
+            display.clear(*color).unwrap();
+            Text::new("Hello Rust!", Point::new(20, 30), style).draw(&mut display).unwrap();
+            info!("color {:?}", *color);
+            delay.delay_millis(3000);
+        }
     }
 
     info!("Display initialized");
