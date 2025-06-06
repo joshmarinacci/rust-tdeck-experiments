@@ -102,7 +102,7 @@ fn main() -> ! {
             display.clear(*color).unwrap();
             Text::new("Hello Rust!", Point::new(20, 30), style).draw(&mut display).unwrap();
             info!("color {:?}", *color);
-            delay.delay_millis(3000);
+            delay.delay_millis(1000);
         }
     }
 
