@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+use alloc::string::String;
 use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{GpioPin, Input, InputConfig, Io, Output, OutputConfig, Pull};
 use esp_hal::analog::adc;
@@ -114,16 +115,16 @@ fn main() -> ! {
         .with_scl(peripherals.GPIO8);
 
     
-    info!("turning on the keyboard backlight");
-    let mut buf = [0u8; 2];
-    buf[0] = 0x02;
+    // info!("turning on the keyboard backlight");
+    // let mut buf = [0u8; 2];
+    // buf[0] = 0x02;
 
-    for val in 0..255 {
-        buf[1] = val;
-        let mut resp = i2c.write(LILYGO_KB_I2C_ADDRESS,&buf);
-        info!("response {:?}",resp);
-        delay.delay_millis(10);
-    }
+    // for val in 0..255 {
+    //     buf[1] = val;
+    //     let mut resp = i2c.write(LILYGO_KB_I2C_ADDRESS,&buf);
+    //     info!("response {:?}",resp);
+    //     delay.delay_millis(10);
+    // }
 
     // buf[1] = 0x99;
     // resp = i2c.write(LILYGO_KB_I2C_ADDRESS,&buf);
@@ -143,7 +144,7 @@ fn main() -> ! {
         match kb_res {
             Ok(kb_res) => {
                 if(data[0] != 0x00) {
-                    info!("kb_res = {:?}", data);
+                    info!("kb_res = {:?}", String::from_utf8_lossy(&data));
                 }
             },
             Err(e) => {
