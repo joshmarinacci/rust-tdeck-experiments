@@ -69,9 +69,9 @@ fn main() -> ! {
     tft_enable.set_high();
 
     info!("creating spi device");
-    let mut spi = Spi::new(peripherals.SPI2, SpiConfig::default()
+    let spi = Spi::new(peripherals.SPI2, SpiConfig::default()
         .with_frequency(Rate::from_mhz(40))
-                           // .with_mode(Mode::_0)
+                       // .with_mode(Mode::_0)
     ).unwrap()
         .with_sck(tft_sck)
         .with_miso(tft_miso)
@@ -92,12 +92,12 @@ fn main() -> ! {
         // .display_size(320,240)
         .init(&mut delay).unwrap();
 
-    info!("initted");
+    info!("initialized display");
     // wait for everything to boot up
     // delay.delay_millis(500);
     let colors = [Rgb565::BLACK, Rgb565::WHITE, Rgb565::RED, Rgb565::GREEN, Rgb565::BLUE];
     let style = MonoTextStyle::new(&FONT_6X10, Rgb565::WHITE);
-    for n in 1..10 {
+    for _ in 1..10 {
         for color in colors.iter() {
             display.clear(*color).unwrap();
             Text::new("Hello Rust!", Point::new(20, 30), style).draw(&mut display).unwrap();
