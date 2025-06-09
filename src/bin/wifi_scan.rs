@@ -28,7 +28,6 @@ use log::info;
 use smoltcp::{
     iface::{SocketSet, SocketStorage},
     wire::{DhcpOption, IpAddress},
-    phy::Device,
 };
 
 
@@ -55,7 +54,7 @@ fn main() -> ! {
     // turn on the board power and wait 1 second
     let mut board_power = Output::new(peripherals.GPIO10, High, OutputConfig::default());
     board_power.set_high();
-    let mut delay = Delay::new();
+    let delay = Delay::new();
     delay.delay_millis(1000);
 
     info!("power is on");
@@ -187,14 +186,6 @@ fn main() -> ! {
         while Instant::now() < deadline {
             socket.work();
         }
-    }
-    
-    
-    
-    loop {
-        info!("Hello world!");
-        let delay_start = Instant::now();
-        while delay_start.elapsed() < Duration::from_millis(500) {}
     }
 }
 

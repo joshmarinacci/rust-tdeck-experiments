@@ -3,18 +3,13 @@
 
 use alloc::string::String;
 use esp_hal::clock::CpuClock;
-use esp_hal::gpio::{GpioPin, Input, InputConfig, Io, Output, OutputConfig, Pull};
-use esp_hal::analog::adc;
-use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
+use esp_hal::gpio::{Input, InputConfig, Output, OutputConfig, Pull};
 use esp_hal::delay::Delay;
-use esp_hal::gpio::DriveMode::PushPull;
 use esp_hal::gpio::Level::{High, Low};
 use esp_hal::i2c::master::{BusTimeout, Config, I2c};
 use esp_hal::main;
 use esp_hal::spi::{ master::{Spi, Config as SpiConfig } };
-use esp_hal::spi::Mode;
-use esp_hal::time::{Duration, Instant, Rate};
-use esp_hal::timer::timg::TimerGroup;
+use esp_hal::time::{Rate};
 use log::info;
 use embedded_hal_bus::spi::ExclusiveDevice;
 
@@ -23,11 +18,9 @@ use embedded_graphics::{
     pixelcolor::Rgb565,
     prelude::*,
     text::Text,
-    mono_font::{ ascii::FONT_6X10, MonoTextStyle}
+    mono_font::{ MonoTextStyle}
 };
-use embedded_graphics::framebuffer::buffer_size;
 use embedded_graphics::mono_font::ascii::FONT_8X13;
-use embedded_graphics::mono_font::iso_8859_13::FONT_6X12;
 use mipidsi::{models::ST7789, Builder};
 use mipidsi::interface::SpiInterface;
 use mipidsi::options::{ColorInversion, ColorOrder, Orientation, Rotation};
@@ -74,7 +67,7 @@ fn main() -> ! {
     tft_enable.set_high();
 
     info!("creating spi device");
-    let mut spi = Spi::new(peripherals.SPI2, SpiConfig::default()
+    let spi = Spi::new(peripherals.SPI2, SpiConfig::default()
         .with_frequency(Rate::from_mhz(40))
                            // .with_mode(Mode::_0)
     ).unwrap()
@@ -122,10 +115,10 @@ fn main() -> ! {
         let mut data = [0u8; 1];
         let kb_res = i2c.read(LILYGO_KB_I2C_ADDRESS, &mut data);
         match kb_res {
-            Ok(kb_res) => {
-                if(data[0] != 0x00) {
+            Ok(_) => {
+                if data[0] != 0x00 {
                     let char = data[0];
-                    if(char == 8) {
+                    if char == 8 {
                         info!("backspace");
                         text.pop();
                     } else {
