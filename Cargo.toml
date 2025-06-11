@@ -8,16 +8,8 @@ name = "rust-tdeck-experiments"
 path = "./src/bin/main.rs"
 
 [dependencies]
-#critical-section = "1.2.0"
-#embassy-net = { version = "0.6.0", features = [
-#  "dhcpv4",
-#  "medium-ethernet",
-#  "tcp",
-#  "udp",
-#] }
 embedded-io = { version = "0.6.1" , default-features = false}
 blocking-network-stack = { git = "https://github.com/bjoernQ/blocking-network-stack.git", rev = "b3ecefc222d8806edd221f266999ca339c52d34e" }
-embedded-hal = "1.0.0"
 embedded-graphics = "0.8.1"
 embedded-hal-bus = "0.3.0"
 esp-alloc = "0.7.0"

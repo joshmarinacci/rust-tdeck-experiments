@@ -977,7 +977,6 @@ version = "0.1.0"
 dependencies = [
  "blocking-network-stack",
  "embedded-graphics",
- "embedded-hal 1.0.0",
  "embedded-hal-bus",
  "embedded-io",
  "esp-alloc",
