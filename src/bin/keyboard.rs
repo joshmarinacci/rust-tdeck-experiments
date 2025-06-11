@@ -34,6 +34,7 @@ fn main() -> ! {
     // have to turn on the board and wait 500ms before using the keyboard
     let mut board_power = Output::new(peripherals.GPIO10, High, OutputConfig::default());
     board_power.set_high();
+    info!("board is powering up");
     delay.delay_millis(1000);
 
     let mut i2c = I2c::new(
@@ -52,6 +53,7 @@ fn main() -> ! {
             Ok(_) => {
                 if data[0] != 0x00 {
                     info!("kb_res = {:?}", String::from_utf8_lossy(&data));
+                    delay.delay_millis(100);
                 }
             },
             Err(e) => {
