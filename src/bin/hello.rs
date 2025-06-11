@@ -14,6 +14,7 @@ extern crate alloc;
 
 #[main]
 fn main() -> ! {
+    esp_println::logger::init_logger_from_env();
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     esp_hal::init(config);
 
