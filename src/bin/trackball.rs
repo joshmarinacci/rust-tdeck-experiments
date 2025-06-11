@@ -18,8 +18,6 @@ extern crate alloc;
 
 #[main]
 fn main() -> ! {
-    // standard setup
-    esp_println::logger::init_logger_from_env();
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
     esp_alloc::heap_allocator!(size: 72 * 1024);
@@ -31,7 +29,7 @@ fn main() -> ! {
     delay.delay_millis(1000);
 
     
-    // setup the trackball button pin
+    // set up the trackball button pin
     let tdeck_track_click = Input::new(peripherals.GPIO0, InputConfig::default().with_pull(Pull::Up));// .pins.gpio0.into_pull_up_input();
     // connect to the left and right trackball pins
     let tdeck_trackball_right = Input::new(peripherals.GPIO15, InputConfig::default().with_pull(Pull::Down));//.pins.gpio3.into_pull_up_input(); // G01  GS1

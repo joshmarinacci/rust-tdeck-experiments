@@ -42,9 +42,6 @@ const PASSWORD: &str = "Jefferson2022";
 
 #[main]
 fn main() -> ! {
-    // generator version: 0.3.1
-
-    esp_println::logger::init_logger_from_env();
 
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
@@ -109,8 +106,8 @@ fn main() -> ! {
     println!("is wifi started: {:?}", controller.is_started());
 
     println!("Start Wifi Scan");
-    let res: Result<(heapless::Vec<AccessPointInfo, 10>, usize), WifiError> = controller.scan_n();
-    if let Ok((res, _count)) = res {
+    let res = controller.scan_n(10); // 10 sec timeout?
+    if let Ok((res)) = res {
         for ap in res {
             println!("{:?}", ap);
         }

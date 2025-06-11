@@ -31,10 +31,6 @@ extern crate alloc;
 
 #[main]
 fn main() -> ! {
-    // generator version: 0.3.1
-
-    esp_println::logger::init_logger_from_env();
-
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
 

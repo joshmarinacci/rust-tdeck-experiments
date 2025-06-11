@@ -18,8 +18,6 @@ extern crate alloc;
 
 #[main]
 fn main() -> ! {
-    esp_println::logger::init_logger_from_env();
-
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
 
@@ -41,8 +39,6 @@ fn main() -> ! {
 
     loop {
         info!("getting the pin value");
-        // let pin_value = bat_adc.read_oneshot(&mut pin);
-        // let pin_value: u16 = nb::block!(adc1.read_oneshot(&mut pin)).unwrap();
         let pin_value: u16 = adc1.read_blocking(&mut pin);
         info!("bat adc is {} ", pin_value);
         delay.delay_millis(1500);

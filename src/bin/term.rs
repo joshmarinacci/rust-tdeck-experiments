@@ -36,9 +36,6 @@ pub const LILYGO_KB_I2C_ADDRESS: u8 =     0x55;
 
 #[main]
 fn main() -> ! {
-    // generator version: 0.3.1
-
-    esp_println::logger::init_logger_from_env();
 
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
@@ -104,7 +101,7 @@ fn main() -> ! {
         .unwrap()
         .with_sda(peripherals.GPIO18)
         .with_scl(peripherals.GPIO8);
-    info!("initted");
+    info!("initialized");
 
     let style = MonoTextStyle::new(&FONT_8X13, Rgb565::WHITE);
     display.clear(Rgb565::BLACK).unwrap();
