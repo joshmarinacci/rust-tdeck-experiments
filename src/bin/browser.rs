@@ -52,6 +52,7 @@ extern crate alloc;
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
 
+#[derive(Clone, Copy)]
 enum LineStyle {
     Header,
     Plain,
@@ -174,36 +175,34 @@ fn main() -> ! {
     let line_height = font.character_size.height as i32;
     let char_width = font.character_size.width as i32;
 
+    let max_chars = display.size().width / font.character_size.width;
+    info!("display width in chars: {}", max_chars);
+
     let bg_style = Rgb565::BLACK;
     let plain_style = MonoTextStyle::new(&font, Rgb565::WHITE);
     let header_style = MonoTextStyle::new(&FONT_9X15_BOLD, Rgb565::BLUE);
     let link_style = MonoTextStyle::new(&font, Rgb565::RED);
     let debug_style = MonoTextStyle::new(&font, Rgb565::CSS_ORANGE);
-    let mut scroll_offset = 0;
+    let mut scroll_offset:i32 = 0;
 
-    let viewport_height = 320/(10+4);
-    info!("viewport height is {}", viewport_height);
-    // setup lines
-    let lines = vec![
-        TextLine::with(vec![TextRun::header("Header Text")]),
-        TextLine::new("  "),
-        TextLine::new("This is some text "),
-        TextLine::new("This is some more text "),
-        TextLine::with(vec![
-            TextRun{
-                style:Plain,
-                text: "This is some text with ".to_string(),
-            },
-            TextRun{
-                style:Link,
-                text: "a link".to_string(),
-            },
-            TextRun{
-                style:Plain,
-                text: " inside it".to_string(),
-            },
-        ])
-    ];
+    let viewport_height:i32 = (display.size().height / font.character_size.height) as i32;
+    info!("viewport height is {} rows", viewport_height);
+    let mut lines:Vec<TextLine> = vec![];
+    lines.append(&mut break_lines("Thoughts on LLMs and the coming AI backlash", max_chars-4,LineStyle::Header));
+    lines.push(TextLine {
+        runs: vec![TextRun {
+            style:Plain,
+            text:"".into(),
+        }]
+    });
+    lines.append(&mut break_lines(r#"I find Large Language Models fascinating.
+    They are a very different approach to AI than most of the 60 years of
+    AI research and show great promise. At the same time they are just technology.
+    They aren't magic. They aren't even very good technology yet. LLM hype has vastly
+    outpaced reality and I think we are due for a correction, possibly even a bubble pop.
+    Furthermore, I think future AI progress is going to happen on the app / UX side,
+    not on the core models, which are already starting to show their scaling limits.
+    Let's dig in. Better pour a cup of coffee. This could be a long one."#, max_chars-4,LineStyle::Plain));
 
 
 
@@ -218,19 +217,24 @@ fn main() -> ! {
             info!("drawing lines at scroll {}", scroll_offset);
             // select the lines in the current viewport
             // draw the lines
-            for (j, line) in lines.iter().enumerate() {
-                let mut inset: usize = 0;
-                let y = (j + scroll_offset) as i32 * line_height + y_offset;
+            let mut end:usize = (scroll_offset + viewport_height) as usize;
+            if end >= lines.len() {
+                end = lines.len();
+            }
+            let viewport_lines = &lines[(scroll_offset as usize) .. end];
+            for (j, line) in viewport_lines.iter().enumerate() {
+                let mut inset_chars: usize = 3;
+                let y = j as i32 * line_height + 10;
                 Text::new(&format!("{}", j), Point::new(x_inset, y), debug_style).draw(&mut display).unwrap();
                 for (i, run) in line.runs.iter().enumerate() {
-                    let pos = Point::new(x_inset + 15 + (inset as i32) * char_width, y);
+                    let pos = Point::new(inset_chars as i32 * char_width, y);
                     let style = match run.style {
                         Plain => plain_style,
                         Header => header_style,
                         Link => link_style,
                     };
                     Text::new(&run.text, pos, style).draw(&mut display).unwrap();
-                    inset += run.text.len();
+                    inset_chars += run.text.len();
                 }
             }
         }
@@ -243,12 +247,15 @@ fn main() -> ! {
                 if data[0] != 0x00 {
                     info!("kb_res = {:?}", String::from_utf8_lossy(&data));
                     // scroll up and down
-                    if data[0] == b'k' {
-                        scroll_offset += 1;
+                    if data[0] == b'j' {
+                        if scroll_offset + viewport_height < lines.len() as i32 {
+                            scroll_offset = scroll_offset + viewport_height;
+                        }
                         dirty = true;
                     }
-                    if data[0] == b'j' {
-                        scroll_offset = if scroll_offset > 0 { scroll_offset - 1 } else { 0 };
+                    if data[0] == b'k' {
+                        scroll_offset = if (scroll_offset - viewport_height) >= 0 { scroll_offset - viewport_height } else { 0 };
+                        info!("scroll_offset = {}", scroll_offset);
                         dirty = true;
                     }
                 }
@@ -257,7 +264,44 @@ fn main() -> ! {
                 // info!("kb_res = {}", e);
             }
         }
-        delay.delay_millis(100);
+        // delay.delay_millis(100);
     }
+}
+
+fn break_lines(text: &str, width: u32, style: LineStyle) -> Vec<TextLine> {
+    let mut lines: Vec<TextLine> = vec![];
+    let mut tl:TextLine = TextLine {
+        runs: vec![],
+    };
+    let mut bucket = String::new();
+    for (i,word) in text.split(' ').enumerate() {
+        let word = word.trim();
+        // info!("word = {:?}", word);
+        if word == "" {
+            continue;
+        }
+        if bucket.len() + word.len() < width as usize {
+            bucket.push_str(word);
+            bucket.push_str(" ");
+        } else {
+            tl.runs.push(TextRun{
+                style: style.clone(),
+                text: bucket.clone(),
+            });
+            lines.push(tl);
+            tl = TextLine {
+                runs: vec![],
+            };
+            bucket.clear();
+            bucket.push_str(word);
+            bucket.push_str(" ");
+        }
+    }
+    tl.runs.push(TextRun{
+        style:style.clone(),
+        text: bucket.clone(),
+    });
+    lines.push(tl);
+    return lines;
 }
 
