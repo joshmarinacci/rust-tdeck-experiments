@@ -220,6 +220,7 @@ fn main() -> ! {
     tft_enable.set_high();
 
     info!("creating spi device");
+    info!("heap is {}", esp_alloc::HEAP.stats());
     let spi = Spi::new(peripherals.SPI2, SpiConfig::default()
         .with_frequency(Rate::from_mhz(40))
                        // .with_mode(Mode::_0)
@@ -341,6 +342,7 @@ fn main() -> ! {
                     inset_chars += run.text.len();
                 }
             }
+            info!("heap is {}", esp_alloc::HEAP.stats());
         }
         menu.draw(&mut display);
 
