@@ -32,6 +32,7 @@ use embedded_graphics::mono_font::ascii::{FONT_10X20, FONT_7X13, FONT_7X13_BOLD,
 use embedded_graphics::mono_font::iso_8859_14::FONT_6X12;
 use embedded_graphics::mono_font::iso_8859_4::FONT_6X9;
 use embedded_graphics::mono_font::iso_8859_9::FONT_7X14;
+use embedded_graphics::mono_font::MonoFont;
 use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
 use esp_hal::i2c::master::{BusTimeout, Config, I2c};
 use mipidsi::{models::ST7789, Builder, Display, NoResetPin};
@@ -181,6 +182,14 @@ impl MenuView<'_> {
     }
 }
 
+struct BrowserTheme<'a> {
+    bg: Rgb565,
+    font: &'a MonoFont<'a>,
+    header: MonoTextStyle<'a, Rgb565>,
+    plain: MonoTextStyle<'a, Rgb565>,
+    link: MonoTextStyle<'a, Rgb565>,
+    debug: MonoTextStyle<'a, Rgb565>,
+}
 #[main]
 fn main() -> ! {
     esp_println::logger::init_logger_from_env();
@@ -256,11 +265,23 @@ fn main() -> ! {
     let max_chars = display.size().width / font.character_size.width;
     info!("display width in chars: {}", max_chars);
 
-    let bg_style = Rgb565::BLACK;
-    let plain_style = MonoTextStyle::new(&font, Rgb565::WHITE);
-    let header_style = MonoTextStyle::new(&FONT_9X15_BOLD, Rgb565::BLUE);
-    let link_style = MonoTextStyle::new(&font, Rgb565::RED);
-    let debug_style = MonoTextStyle::new(&font, Rgb565::CSS_ORANGE);
+    let dark_theme = BrowserTheme {
+        bg: Rgb565::BLACK,
+        font: &FONT_9X15,
+        header: MonoTextStyle::new(&FONT_9X15, Rgb565::RED),
+        plain: MonoTextStyle::new(&FONT_9X15, Rgb565::WHITE),
+        link: MonoTextStyle::new(&FONT_9X15, Rgb565::BLUE),
+        debug: MonoTextStyle::new(&FONT_9X15, Rgb565::CSS_ORANGE),
+    };
+    let light_theme = BrowserTheme {
+        bg: Rgb565::WHITE,
+        font: &FONT_9X15,
+        header: MonoTextStyle::new(&FONT_9X15, Rgb565::RED),
+        plain: MonoTextStyle::new(&FONT_9X15, Rgb565::BLACK),
+        link: MonoTextStyle::new(&FONT_9X15, Rgb565::BLUE),
+        debug: MonoTextStyle::new(&FONT_9X15, Rgb565::CSS_ORANGE),
+    };
+    let mut theme = &dark_theme;
     let mut scroll_offset:i32 = 0;
 
     let viewport_height:i32 = (display.size().height / font.character_size.height) as i32;
@@ -296,7 +317,7 @@ fn main() -> ! {
         if (dirty) {
             dirty = false;
             // clear display
-            display.clear(bg_style).unwrap();
+            display.clear(theme.bg).unwrap();
             info!("drawing lines at scroll {}", scroll_offset);
             // select the lines in the current viewport
             // draw the lines
@@ -308,13 +329,13 @@ fn main() -> ! {
             for (j, line) in viewport_lines.iter().enumerate() {
                 let mut inset_chars: usize = 3;
                 let y = j as i32 * line_height + 10;
-                Text::new(&format!("{}", j), Point::new(x_inset, y), debug_style).draw(&mut display).unwrap();
+                Text::new(&format!("{}", j), Point::new(x_inset, y), theme.debug).draw(&mut display).unwrap();
                 for (i, run) in line.runs.iter().enumerate() {
                     let pos = Point::new(inset_chars as i32 * char_width, y);
                     let style = match run.style {
-                        Plain => plain_style,
-                        Header => header_style,
-                        Link => link_style,
+                        Plain => theme.plain,
+                        Header => theme.header,
+                        Link => theme.link,
                     };
                     Text::new(&run.text, pos, style).draw(&mut display).unwrap();
                     inset_chars += run.text.len();
@@ -355,6 +376,18 @@ fn main() -> ! {
                         } else {
                             scroll_offset = if (scroll_offset - viewport_height) >= 0 { scroll_offset - viewport_height } else { 0 };
                             info!("scroll_offset = {}", scroll_offset);
+                            dirty = true;
+                        }
+                    }
+                    if data[0] == b'\r' {
+                        if menu.is_visible() {
+                            menu.hide();
+                            info!("selected item {}",menu.highlighted_index);
+                            if menu.highlighted_index == 0 {
+                                theme = &dark_theme;
+                            } else {
+                                theme = &light_theme;
+                            }
                             dirty = true;
                         }
                     }
