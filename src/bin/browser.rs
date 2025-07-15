@@ -11,6 +11,7 @@ use alloc::string::{String, ToString};
 use alloc::{format, vec};
 use alloc::vec::Vec;
 use core::cmp::max;
+use core::ops::Add;
 use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{Input, InputConfig, Output, OutputConfig, Pull};
 use esp_hal::delay::Delay;
@@ -106,6 +107,7 @@ impl TextLine {
 }
 
 struct MenuView<'a> {
+    id: &'a str,
     items: Vec<&'a str>,
     position: Point,
     highlighted_index: usize,
@@ -139,12 +141,13 @@ impl<'a> MenuView<'a> {
 }
 
 impl MenuView<'_> {
-    fn new<'a>(items: &Vec<&'a str>, p1: Point) -> MenuView<'a> {
+    fn new<'a>(id:&'a str, items: &Vec<&'a str>, p1: Point) -> MenuView<'a> {
         MenuView {
+            id:id,
             items:items.to_vec(),
             position:p1,
             highlighted_index: 0,
-            visible: true,
+            visible: false,
             dirty: true
         }
     }
@@ -158,7 +161,7 @@ impl MenuView<'_> {
         let font = FONT_9X15;
         let lh = font.character_size.height as i32;
         let pad = 5;
-        let rect = Rectangle::new(Point::new(0,0), Size::new(100,(self.items.len() as i32 * lh + pad * 2) as u32));
+        let rect = Rectangle::new(self.position, Size::new(100,(self.items.len() as i32 * lh + pad * 2) as u32));
         rect.into_styled(PrimitiveStyle::with_fill(Rgb565::CSS_LIGHT_GRAY)).draw(display).unwrap();
         // info!("Highlighted index {}", self.highlighted_index);
         for (i,item) in self.items.iter().enumerate() {
@@ -173,10 +176,10 @@ impl MenuView<'_> {
                 Rgb565::RED
             };
             let ly = (i as i32)*lh + pad;
-            Rectangle::new(Point::new(pad,ly), Size::new(100, lh as u32))
+            Rectangle::new(Point::new(pad,ly).add(self.position), Size::new(100, lh as u32))
                 .into_styled(PrimitiveStyle::with_fill(bg)).draw(display).unwrap();
             let text_style = MonoTextStyle::new(&font, fg);
-            Text::new(&item, Point::new(pad,ly+lh -2 ), text_style).draw(display).unwrap();
+            Text::new(&item, Point::new(pad,ly+lh -2 ).add(self.position), text_style).draw(display).unwrap();
         }
         self.dirty = false;
     }
@@ -308,12 +311,34 @@ fn main() -> ! {
 
     let x_inset = 5;
     let mut dirty = true;
-    let menu_items = vec![
+    let main_menu_items = vec![
+        "Theme",
+        "Font",
+        "Wifi",
+        "Close",
+    ];
+    let theme_menu_items = vec![
         "Dark",
         "Light",
-        "Automatic"
+        "Close",
     ];
-    let mut menu = MenuView::new(&menu_items, Point::new(0, 0));
+    let font_menu_items = vec![
+        "7x8",
+        "8x12",
+        "9x15",
+        "Close",
+    ];
+    let wifi_menu_items = vec![
+        "SSID1",
+        "SSID2",
+        "SSID3",
+        "Close",
+    ];
+    let mut main_menu = MenuView::new("main",&main_menu_items, Point::new(0, 0));
+    let mut theme_menu = MenuView::new("theme",&theme_menu_items, Point::new(50, 20));
+    let mut font_menu = MenuView::new("font",&font_menu_items, Point::new(50, 20));
+    let mut wifi_menu = MenuView::new("wifi",&wifi_menu_items, Point::new(50, 20));
+    let mut target_menu = "main";
     loop {
         if (dirty) {
             dirty = false;
@@ -342,9 +367,12 @@ fn main() -> ! {
                     inset_chars += run.text.len();
                 }
             }
-            info!("heap is {}", esp_alloc::HEAP.stats());
+            // info!("heap is {}", esp_alloc::HEAP.stats());
         }
-        menu.draw(&mut display);
+        main_menu.draw(&mut display);
+        theme_menu.draw(&mut display);
+        font_menu.draw(&mut display);
+        wifi_menu.draw(&mut display);
 
         // wait for up and down actions
         let mut data = [0u8; 1];
@@ -355,8 +383,14 @@ fn main() -> ! {
                     info!("kb_res = {:?}", String::from_utf8_lossy(&data));
                     // scroll up and down
                     if data[0] == b'j' {
-                        if menu.is_visible() {
-                            menu.nav_prev();
+                        if target_menu == "main" {
+                            main_menu.nav_prev();
+                        } else if target_menu == "theme" {
+                            theme_menu.nav_prev();
+                        } else if target_menu == "font" {
+                            font_menu.nav_prev();
+                        } else if target_menu == "wifi" {
+                            wifi_menu.nav_prev();
                         } else {
                             if scroll_offset + viewport_height < lines.len() as i32 {
                                 scroll_offset = scroll_offset + viewport_height;
@@ -365,16 +399,24 @@ fn main() -> ! {
                         }
                     }
                     if data[0] == b' ' {
-                        if menu.is_visible() {
-                            menu.hide();
-                        } else {
-                            menu.show();
+                        if target_menu == "main" {
+                            if main_menu.is_visible() {
+                                main_menu.hide();
+                            } else {
+                                main_menu.show();
+                            }
                         }
                         dirty = true;
                     }
                     if data[0] == b'k' {
-                        if menu.is_visible() {
-                            menu.nav_next();
+                        if target_menu == "main" {
+                            main_menu.nav_next();
+                        } else if target_menu == "theme" {
+                            theme_menu.nav_next();
+                        } else if target_menu == "font" {
+                            font_menu.nav_next();
+                        } else if target_menu == "wifi" {
+                            wifi_menu.nav_next();
                         } else {
                             scroll_offset = if (scroll_offset - viewport_height) >= 0 { scroll_offset - viewport_height } else { 0 };
                             info!("scroll_offset = {}", scroll_offset);
@@ -382,15 +424,68 @@ fn main() -> ! {
                         }
                     }
                     if data[0] == b'\r' {
-                        if menu.is_visible() {
-                            menu.hide();
-                            info!("selected item {}",menu.highlighted_index);
-                            if menu.highlighted_index == 0 {
-                                theme = &dark_theme;
-                            } else {
-                                theme = &light_theme;
+                        dirty = true;
+                        if target_menu == main_menu.id {
+                            let action = theme_menu.items[theme_menu.highlighted_index];
+                            // info!("selected item {}",action);
+                            if action == "Close" {
+                                main_menu.hide();
                             }
-                            dirty = true;
+                            if main_menu.highlighted_index == 0 {
+                                theme_menu.show();
+                                target_menu = theme_menu.id;
+                                main_menu.dirty = true;
+                            }
+                            if main_menu.highlighted_index == 1 {
+                                font_menu.show();
+                                target_menu = font_menu.id;
+                                main_menu.dirty = true;
+                            }
+                            if main_menu.highlighted_index == 2 {
+                                wifi_menu.show();
+                                target_menu = wifi_menu.id;
+                                main_menu.dirty = true;
+                            }
+                        }
+                        if target_menu == theme_menu.id {
+                            let action = theme_menu.items[theme_menu.highlighted_index];
+                            // info!("selected item {}",action);
+                            if theme_menu.highlighted_index == 0 {
+                                theme = &dark_theme;
+                                dirty = true;
+                                theme_menu.dirty = true;
+                                main_menu.dirty = true;
+                            }
+                            if theme_menu.highlighted_index == 1 {
+                                theme = &light_theme;
+                                dirty = true;
+                                theme_menu.dirty = true;
+                                main_menu.dirty = true;
+                            }
+                            if action == "Close" {
+                                theme_menu.hide();
+                                target_menu = main_menu.id;
+                                theme_menu.dirty = true;
+                                main_menu.dirty = true;
+                            }
+                        }
+                        if target_menu == font_menu.id {
+                            let action = font_menu.items[font_menu.highlighted_index];
+                            info!("selected item {}",action);
+                            if action == "Close" {
+                                font_menu.hide();
+                                target_menu = main_menu.id;
+                                main_menu.dirty = true;
+                            }
+                        }
+                        if target_menu == wifi_menu.id {
+                            let action = wifi_menu.items[wifi_menu.highlighted_index];
+                            info!("selected item {}",action);
+                            if action == "Close" {
+                                wifi_menu.hide();
+                                target_menu = main_menu.id;
+                                main_menu.dirty = true;
+                            }
                         }
                     }
                 }
