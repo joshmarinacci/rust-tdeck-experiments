@@ -15,7 +15,7 @@ use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{Input, InputConfig, Output, OutputConfig, Pull};
 use esp_hal::delay::Delay;
 use esp_hal::gpio::Level::{High, Low};
-use esp_hal::main;
+use esp_hal::{main, Blocking};
 use esp_hal::spi::{ master::{Spi, Config as SpiConfig } };
 use esp_hal::time::{Duration, Instant, Rate};
 use embedded_hal_bus::spi::ExclusiveDevice;
@@ -32,8 +32,9 @@ use embedded_graphics::mono_font::ascii::{FONT_10X20, FONT_7X13, FONT_7X13_BOLD,
 use embedded_graphics::mono_font::iso_8859_14::FONT_6X12;
 use embedded_graphics::mono_font::iso_8859_4::FONT_6X9;
 use embedded_graphics::mono_font::iso_8859_9::FONT_7X14;
+use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
 use esp_hal::i2c::master::{BusTimeout, Config, I2c};
-use mipidsi::{models::ST7789, Builder};
+use mipidsi::{models::ST7789, Builder, Display, NoResetPin};
 use mipidsi::interface::SpiInterface;
 use mipidsi::options::{ColorInversion, ColorOrder, Orientation, Rotation};
 use LineStyle::{Header, Link};
@@ -100,6 +101,83 @@ impl TextLine {
                 TextRun::plain(p0),
             ])
         }
+    }
+}
+
+struct MenuView<'a> {
+    items: Vec<&'a str>,
+    position: Point,
+    highlighted_index: usize,
+    visible: bool,
+    dirty: bool,
+}
+
+impl<'a> MenuView<'a> {
+    pub(crate) fn is_visible(&self) -> bool {
+        return self.visible;
+    }
+}
+
+impl<'a> MenuView<'a> {
+    pub(crate) fn show(&mut self) {
+        self.visible = true;
+        self.dirty = true;
+    }
+    pub(crate) fn hide(&mut self) {
+        self.visible = false;
+        self.dirty = true;
+    }
+    pub(crate) fn nav_prev(&mut self) {
+        self.highlighted_index = (self.highlighted_index + 1) % self.items.len();
+        self.dirty = true;
+    }
+    pub(crate) fn nav_next(&mut self) {
+        self.highlighted_index = (self.highlighted_index + self.items.len() - 1) % self.items.len();
+        self.dirty = true;
+    }
+}
+
+impl MenuView<'_> {
+    fn new<'a>(items: &Vec<&'a str>, p1: Point) -> MenuView<'a> {
+        MenuView {
+            items:items.to_vec(),
+            position:p1,
+            highlighted_index: 0,
+            visible: true,
+            dirty: true
+        }
+    }
+    fn draw(&mut self, display: &mut Display<SpiInterface<ExclusiveDevice<Spi<Blocking>, Output, Delay>, Output>, ST7789, NoResetPin>) {
+        if !self.visible {
+            return;
+        }
+        if !self.dirty {
+            return;
+        }
+        let font = FONT_9X15;
+        let lh = font.character_size.height as i32;
+        let pad = 5;
+        let rect = Rectangle::new(Point::new(0,0), Size::new(100,(self.items.len() as i32 * lh + pad * 2) as u32));
+        rect.into_styled(PrimitiveStyle::with_fill(Rgb565::CSS_LIGHT_GRAY)).draw(display).unwrap();
+        // info!("Highlighted index {}", self.highlighted_index);
+        for (i,item) in self.items.iter().enumerate() {
+            let bg = if i == self.highlighted_index {
+                Rgb565::RED
+            } else {
+                Rgb565::WHITE
+            };
+            let fg = if i == self.highlighted_index {
+                Rgb565::WHITE
+            } else {
+                Rgb565::RED
+            };
+            let ly = (i as i32)*lh + pad;
+            Rectangle::new(Point::new(pad,ly), Size::new(100, lh as u32))
+                .into_styled(PrimitiveStyle::with_fill(bg)).draw(display).unwrap();
+            let text_style = MonoTextStyle::new(&font, fg);
+            Text::new(&item, Point::new(pad,ly+lh -2 ), text_style).draw(display).unwrap();
+        }
+        self.dirty = false;
     }
 }
 
@@ -207,8 +285,13 @@ fn main() -> ! {
 
 
     let x_inset = 5;
-    let y_offset = 10;
     let mut dirty = true;
+    let menu_items = vec![
+        "Dark",
+        "Light",
+        "Automatic"
+    ];
+    let mut menu = MenuView::new(&menu_items, Point::new(0, 0));
     loop {
         if (dirty) {
             dirty = false;
@@ -238,6 +321,7 @@ fn main() -> ! {
                 }
             }
         }
+        menu.draw(&mut display);
 
         // wait for up and down actions
         let mut data = [0u8; 1];
@@ -248,15 +332,31 @@ fn main() -> ! {
                     info!("kb_res = {:?}", String::from_utf8_lossy(&data));
                     // scroll up and down
                     if data[0] == b'j' {
-                        if scroll_offset + viewport_height < lines.len() as i32 {
-                            scroll_offset = scroll_offset + viewport_height;
+                        if menu.is_visible() {
+                            menu.nav_prev();
+                        } else {
+                            if scroll_offset + viewport_height < lines.len() as i32 {
+                                scroll_offset = scroll_offset + viewport_height;
+                            }
+                            dirty = true;
+                        }
+                    }
+                    if data[0] == b' ' {
+                        if menu.is_visible() {
+                            menu.hide();
+                        } else {
+                            menu.show();
                         }
                         dirty = true;
                     }
                     if data[0] == b'k' {
-                        scroll_offset = if (scroll_offset - viewport_height) >= 0 { scroll_offset - viewport_height } else { 0 };
-                        info!("scroll_offset = {}", scroll_offset);
-                        dirty = true;
+                        if menu.is_visible() {
+                            menu.nav_next();
+                        } else {
+                            scroll_offset = if (scroll_offset - viewport_height) >= 0 { scroll_offset - viewport_height } else { 0 };
+                            info!("scroll_offset = {}", scroll_offset);
+                            dirty = true;
+                        }
                     }
                 }
             },
