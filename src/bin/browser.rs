@@ -137,6 +137,7 @@ impl<'a> MenuView<'a> {
     pub(crate) fn show(&mut self) {
         self.visible = true;
         self.dirty = true;
+        self.highlighted_index = 0;
     }
     pub(crate) fn hide(&mut self) {
         self.visible = false;
@@ -224,6 +225,13 @@ impl<'a> CompoundMenu<'a> {
             menu.show();
             self.focused = menu.id;
         }
+    }
+    pub(crate) fn is_menu_visible(&self, id: &str) -> bool {
+        let menu = self.menus.iter().find(|m|m.id == id);
+        if let Some(menu) = menu {
+            return menu.is_visible();
+        }
+        false
     }
     pub(crate) fn hide(&mut self) {
         for menu in &mut self.menus {
@@ -375,7 +383,7 @@ fn main() -> ! {
 
 
     let x_inset = 5;
-    let mut dirty = true;
+    let mut dirty = Rc::new(RefCell::new(Some(true)));
 
     let theme_menu = MenuView {
         id:"themes",
@@ -415,28 +423,35 @@ fn main() -> ! {
             if menu == "main" {
                 if cmd == "Theme" {
                     comp.open_menu("themes");
+                    dirty.borrow_mut().insert(true);
                 }
                 if cmd == "Font" {
                     comp.open_menu("fonts");
+                    dirty.borrow_mut().insert(true);
                 }
                 if cmd == "close" {
                     comp.hide();
+                    dirty.borrow_mut().insert(true);
                 }
             }
             if menu == "themes" {
                 if cmd == "Dark" {
                     theme.borrow_mut().insert(&dark_theme);
+                    dirty.borrow_mut().insert(true);
                 }
                 if cmd == "Light" {
                     theme.borrow_mut().insert(&light_theme);
+                    dirty.borrow_mut().insert(true);
                 }
                 if cmd == "close" {
-                    comp.hide_menu("themes")
+                    comp.hide_menu("themes");
+                    dirty.borrow_mut().insert(true);
                 }
             }
             if menu == "fonts" {
                 if cmd == "close" {
-                    comp.hide_menu("fonts")
+                    comp.hide_menu("fonts");
+                    dirty.borrow_mut().insert(true);
                 }
             }
         }))
@@ -447,8 +462,8 @@ fn main() -> ! {
 
 
     loop {
-        if (dirty) {
-            dirty = false;
+        if (dirty.borrow().unwrap() == true) {
+            dirty.borrow_mut().insert(false);
             // clear display
             let theme = theme.borrow().unwrap();
             display.clear(theme.bg).unwrap();
@@ -476,9 +491,9 @@ fn main() -> ! {
                 }
             }
             // info!("heap is {}", esp_alloc::HEAP.stats());
+            menu.draw(&mut display);
         }
         // button.draw(&mut display);
-        menu.draw(&mut display);
 
         // wait for up and down actions
         let mut data = [0u8; 1];
@@ -487,14 +502,14 @@ fn main() -> ! {
             Ok(_) => {
                 if data[0] != 0x00 {
                     // info!("kb_res = {:?}", String::from_utf8_lossy(&data));
-                    dirty = true;
-                    // if main_menu.is_visible() {
-                    menu.handle_key_event(data[0]);
-                    // } else {
-                    //     if data[0] == b' ' {
-                    //         main_menu.show();
-                    //     }
-                    // }
+                    dirty.borrow_mut().insert(true);
+                    if menu.is_menu_visible("main") {
+                        menu.handle_key_event(data[0]);
+                    } else {
+                        if data[0] == b' ' {
+                            menu.open_menu("main");
+                        }
+                    }
                     //     if data[0] == b'j' {
                     //         // scroll up and down
                     //         if scroll_offset + viewport_height < lines.len() as i32 {
