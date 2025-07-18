@@ -14,7 +14,9 @@ use alloc::rc::Rc;
 use alloc::vec::Vec;
 use core::cell::RefCell;
 use core::cmp::max;
+use core::net::Ipv4Addr;
 use core::ops::Add;
+use blocking_network_stack::{Socket, Stack};
 use esp_hal::clock::CpuClock;
 use esp_hal::gpio::{Input, InputConfig, Output, OutputConfig, Pull};
 use esp_hal::delay::Delay;
@@ -38,11 +40,18 @@ use embedded_graphics::mono_font::iso_8859_4::FONT_6X9;
 use embedded_graphics::mono_font::iso_8859_9::FONT_7X14;
 use embedded_graphics::mono_font::MonoFont;
 use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
+use embedded_io::{Read, Write};
 use esp_hal::aes::Key;
 use esp_hal::i2c::master::{BusTimeout, Config, I2c};
+use esp_hal::rng::Rng;
+use esp_hal::timer::timg::TimerGroup;
+use esp_println::println;
+use esp_wifi::wifi::{ClientConfiguration, Configuration, WifiController, WifiDevice};
 use mipidsi::{models::ST7789, Builder, Display, NoResetPin};
 use mipidsi::interface::SpiInterface;
 use mipidsi::options::{ColorInversion, ColorOrder, Orientation, Rotation};
+use smoltcp::iface::{SocketSet, SocketStorage};
+use smoltcp::wire::{DhcpOption, IpAddress};
 use LineStyle::{Header, Link};
 use crate::LineStyle::Plain;
 
@@ -266,6 +275,9 @@ impl<'a> CompoundMenu<'a> {
     }
 }
 
+const SSID: &str = "JEFF22G";
+const PASSWORD: &str = "Jefferson2022";
+
 #[main]
 fn main() -> ! {
     esp_println::logger::init_logger_from_env();
@@ -334,6 +346,56 @@ fn main() -> ! {
         .with_sda(peripherals.GPIO18)
         .with_scl(peripherals.GPIO8);
     info!("initialized I2C keyboard");
+
+
+    let mut rng = Rng::new(peripherals.RNG);
+
+    // init the wifi chip
+    let timg0 = TimerGroup::new(peripherals.TIMG0);
+    let esp_wifi_ctrl =  esp_wifi::init(timg0.timer0, rng.clone(), peripherals.RADIO_CLK).unwrap();
+
+    // access the wifi controller
+    let (mut controller, interfaces) =
+        esp_wifi::wifi::new(&esp_wifi_ctrl, peripherals.WIFI).unwrap();
+
+    let mut device = interfaces.sta;
+    let iface = create_interface(&mut device);
+
+    // configure DHCP
+    let mut socket_set_entries: [SocketStorage; 3] = Default::default();
+    let mut socket_set = SocketSet::new(&mut socket_set_entries[..]);
+    let mut dhcp_socket = smoltcp::socket::dhcpv4::Socket::new();
+    // we can set a hostname here (or add other DHCP options)
+    dhcp_socket.set_outgoing_options(&[DhcpOption {
+        kind: 12,
+        data: b"esp-wifi",
+    }]);
+    socket_set.add(dhcp_socket);
+
+    info!("dhcp configured");
+    let now = || Instant::now().duration_since_epoch().as_millis();
+    let stack = Stack::new(iface, device, socket_set, now, rng.random());
+
+    // disable power savings
+    controller
+        .set_power_saving(esp_wifi::config::PowerSaveMode::None)
+        .unwrap();
+
+
+    wifi_connect(&mut controller, &stack);
+
+    info!("Start busy loop on main");
+    info!("Making HTTP request");
+
+    // make a simple HTTP request
+    let mut rx_buffer = [0u8; 1536];
+    let mut tx_buffer = [0u8; 1536];
+    let mut socket = stack.get_socket(&mut rx_buffer, &mut tx_buffer);
+    make_http_request(&mut socket);
+    info!("finished the http request");
+
+
+
 
     let font = FONT_9X15;
     let line_height = font.character_size.height as i32;
@@ -405,10 +467,30 @@ fn main() -> ! {
         callback: None,
     };
 
+    let wifi_menu = MenuView {
+        id:"wifi",
+        dirty:true,
+        items: vec!["wifi stuff","info","close"],
+        position: Point::new(20,20),
+        highlighted_index: 0,
+        visible: false,
+        callback: None,
+    };
+
+    let bookmarks_menu = MenuView {
+        id:"bookmarks",
+        dirty:true,
+        items: vec!["joshondesign.com","close"],
+        position: Point::new(20,20),
+        highlighted_index: 0,
+        visible: false,
+        callback: None,
+    };
+
     let main_menu = MenuView {
         id:"main",
         dirty: true,
-        items: vec!["Theme","Font","Wifi","close"],
+        items: vec!["Theme","Font","Wifi","Bookmarks","close"],
         position: Point::new(0,0),
         highlighted_index: 0,
         visible: true,
@@ -427,6 +509,14 @@ fn main() -> ! {
                 }
                 if cmd == "Font" {
                     comp.open_menu("fonts");
+                    dirty.borrow_mut().insert(true);
+                }
+                if cmd == "Wifi" {
+                    comp.open_menu("wifi");
+                    dirty.borrow_mut().insert(true);
+                }
+                if cmd == "Bookmarks" {
+                    comp.open_menu("bookmarks");
                     dirty.borrow_mut().insert(true);
                 }
                 if cmd == "close" {
@@ -454,11 +544,37 @@ fn main() -> ! {
                     dirty.borrow_mut().insert(true);
                 }
             }
+            if menu == "wifi" {
+                if cmd == "info" {
+                    info!("printing wifi info");
+                    if let Ok(ip) = stack.get_ip_info() {
+                        info!("ip is {:?}", ip.ip);
+                        info!("dns is {:?}", ip.dns);
+                        info!("rssi is {:?}", controller.rssi());
+                        // info!("client config is {:?}", client_config);
+                    }
+                }
+                if cmd == "close" {
+                    comp.hide_menu("wifi");
+                    dirty.borrow_mut().insert(true);
+                }
+            }
+            if menu == "bookmarks" {
+                if cmd == "joshondesign.com" {
+                    info!("loading joshondesign.com")
+                }
+                if cmd == "close" {
+                    comp.hide_menu("bookmarks");
+                    dirty.borrow_mut().insert(true);
+                }
+            }
         }))
     };
     menu.add_menu(main_menu);
     menu.add_menu(theme_menu);
     menu.add_menu(font_menu);
+    menu.add_menu(wifi_menu);
+    menu.add_menu(bookmarks_menu);
 
 
     loop {
@@ -533,6 +649,81 @@ fn main() -> ! {
     }
 }
 
+fn make_http_request(socket: &mut Socket<WifiDevice>)  {
+    socket.work();
+
+    socket
+        .open(IpAddress::Ipv4(Ipv4Addr::new(142, 250, 185, 115)), 80)
+        .unwrap();
+
+    socket
+        .write(b"GET / HTTP/1.0\r\nHost: www.mobile-j.de\r\n\r\n")
+        .unwrap();
+    socket.flush().unwrap();
+
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut buffer = [0u8; 512];
+    while let Ok(len) = socket.read(&mut buffer) {
+        let to_print = unsafe { core::str::from_utf8_unchecked(&buffer[..len]) };
+        info!("{}", to_print);
+
+        if Instant::now() > deadline {
+            info!("Timeout");
+            break;
+        }
+    }
+    info!("done with request");
+}
+
+fn wifi_connect(controller: &mut WifiController, stack: &Stack<WifiDevice>) {
+    let client_config = Configuration::Client(ClientConfiguration {
+        ssid: SSID.try_into().unwrap(),
+        password: PASSWORD.try_into().unwrap(),
+        ..Default::default()
+    });
+    let res = controller.set_configuration(&client_config);
+    info!("wifi_set_configuration returned {:?}", res);
+
+    controller.start().unwrap();
+    info!("is wifi started: {:?}", controller.is_started());
+
+    info!("Start Wifi Scan");
+    let res = controller.scan_n(10); // 10 sec timeout?
+    if let Ok((res)) = res {
+        for ap in res {
+            println!("{:?}", ap);
+        }
+    }
+
+    info!("{:?}", controller.capabilities());
+    info!("wifi_connect {:?}", controller.connect());
+
+    // wait to get connected
+    info!("Wait to get connected");
+    loop {
+        match controller.is_connected() {
+            Ok(true) => break,
+            Ok(false) => {}
+            Err(err) => {
+                info!("{:?}", err);
+                loop {}
+            }
+        }
+    }
+    info!("controller connected = {:?}", controller.is_connected());
+
+    // // wait for getting an ip address
+    info!("Wait to get an ip address");
+    loop {
+        stack.work();
+
+        if stack.is_iface_up() {
+            info!("got ip {:?}", stack.get_ip_info());
+            break;
+        }
+    }
+}
+
 fn break_lines(text: &str, width: u32, style: LineStyle) -> Vec<TextLine> {
     let mut lines: Vec<TextLine> = vec![];
     let mut tl:TextLine = TextLine {
@@ -570,3 +761,22 @@ fn break_lines(text: &str, width: u32, style: LineStyle) -> Vec<TextLine> {
     return lines;
 }
 
+fn timestamp() -> smoltcp::time::Instant {
+    smoltcp::time::Instant::from_micros(
+        esp_hal::time::Instant::now()
+            .duration_since_epoch()
+            .as_micros() as i64,
+    )
+}
+
+pub fn create_interface(device: &mut esp_wifi::wifi::WifiDevice) -> smoltcp::iface::Interface {
+    // users could create multiple instances but since they only have one WifiDevice
+    // they probably can't do anything bad with that
+    smoltcp::iface::Interface::new(
+        smoltcp::iface::Config::new(smoltcp::wire::HardwareAddress::Ethernet(
+            smoltcp::wire::EthernetAddress::from_bytes(&device.mac_address()),
+        )),
+        device,
+        timestamp(),
+    )
+}
