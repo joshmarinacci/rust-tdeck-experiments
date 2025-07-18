@@ -43,6 +43,7 @@ use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
 use embedded_io::{Read, Write};
 use esp_hal::aes::Key;
 use esp_hal::i2c::master::{BusTimeout, Config, I2c};
+use esp_hal::peripherals::{Peripherals, RNG, TIMG0};
 use esp_hal::rng::Rng;
 use esp_hal::timer::timg::TimerGroup;
 use esp_println::println;
@@ -382,17 +383,15 @@ fn main() -> ! {
         .unwrap();
 
 
-    wifi_connect(&mut controller, &stack);
-
-    info!("Start busy loop on main");
-    info!("Making HTTP request");
-
-    // make a simple HTTP request
-    let mut rx_buffer = [0u8; 1536];
-    let mut tx_buffer = [0u8; 1536];
-    let mut socket = stack.get_socket(&mut rx_buffer, &mut tx_buffer);
-    make_http_request(&mut socket);
-    info!("finished the http request");
+        // info!("Start busy loop on main");
+    // info!("Making HTTP request");
+    //
+    // // make a simple HTTP request
+    // let mut rx_buffer = [0u8; 1536];
+    // let mut tx_buffer = [0u8; 1536];
+    // let mut socket = stack.get_socket(&mut rx_buffer, &mut tx_buffer);
+    // make_http_request(&mut socket);
+    // info!("finished the http request");
 
 
 
@@ -470,7 +469,7 @@ fn main() -> ! {
     let wifi_menu = MenuView {
         id:"wifi",
         dirty:true,
-        items: vec!["wifi stuff","info","close"],
+        items: vec!["connect","info","close"],
         position: Point::new(20,20),
         highlighted_index: 0,
         visible: false,
@@ -545,6 +544,9 @@ fn main() -> ! {
                 }
             }
             if menu == "wifi" {
+                if cmd == "connect" {
+                    wifi_connect(&mut controller, &stack);
+                }
                 if cmd == "info" {
                     info!("printing wifi info");
                     if let Ok(ip) = stack.get_ip_info() {
@@ -691,7 +693,7 @@ fn wifi_connect(controller: &mut WifiController, stack: &Stack<WifiDevice>) {
     let res = controller.scan_n(10); // 10 sec timeout?
     if let Ok((res)) = res {
         for ap in res {
-            println!("{:?}", ap);
+            info!("{:?}", ap);
         }
     }
 
@@ -702,24 +704,28 @@ fn wifi_connect(controller: &mut WifiController, stack: &Stack<WifiDevice>) {
     info!("Wait to get connected");
     loop {
         match controller.is_connected() {
-            Ok(true) => break,
-            Ok(false) => {}
-            Err(err) => {
-                info!("{:?}", err);
-                loop {}
+            Ok(true) => {
+                info!("connected");
+                info!("controller connected = {:?}", controller.is_connected());
+                // // wait for getting an ip address
+                info!("Wait to get an ip address");
+                loop {
+                    stack.work();
+                    if stack.is_iface_up() {
+                        info!("got ip {:?}", stack.get_ip_info());
+                        break;
+                    }
+                }
+                break;
+            },
+            Ok(false) => {
+                // info!("did not connect");
             }
-        }
-    }
-    info!("controller connected = {:?}", controller.is_connected());
-
-    // // wait for getting an ip address
-    info!("Wait to get an ip address");
-    loop {
-        stack.work();
-
-        if stack.is_iface_up() {
-            info!("got ip {:?}", stack.get_ip_info());
-            break;
+            Err(err) => {
+                info!("Err: {:?}", err);
+                break;
+                // loop {}
+            }
         }
     }
 }
