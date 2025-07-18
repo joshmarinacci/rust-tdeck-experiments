@@ -376,22 +376,15 @@ fn main() -> ! {
     info!("dhcp configured");
     let now = || Instant::now().duration_since_epoch().as_millis();
     let stack = Stack::new(iface, device, socket_set, now, rng.random());
+    let mut rx_buffer = [0u8; 1536];
+    let mut tx_buffer = [0u8; 1536];
+    let mut socket = stack.get_socket(&mut rx_buffer, &mut tx_buffer);
 
     // disable power savings
     controller
         .set_power_saving(esp_wifi::config::PowerSaveMode::None)
         .unwrap();
 
-
-        // info!("Start busy loop on main");
-    // info!("Making HTTP request");
-    //
-    // // make a simple HTTP request
-    // let mut rx_buffer = [0u8; 1536];
-    // let mut tx_buffer = [0u8; 1536];
-    // let mut socket = stack.get_socket(&mut rx_buffer, &mut tx_buffer);
-    // make_http_request(&mut socket);
-    // info!("finished the http request");
 
 
 
@@ -563,7 +556,19 @@ fn main() -> ! {
             }
             if menu == "bookmarks" {
                 if cmd == "joshondesign.com" {
-                    info!("loading joshondesign.com")
+                    info!("loading joshondesign.com");
+                    {
+                        // make a simple HTTP request
+                        if let Ok(con) = controller.is_connected() {
+                            if con {
+                                info!("Making HTTP request");
+                                make_http_request(&mut socket, "https://joshondesign.com/");
+                                info!("finished the http request");
+                            } else {
+                                info!("not connected");
+                            }
+                        }
+                    }
                 }
                 if cmd == "close" {
                     comp.hide_menu("bookmarks");
@@ -651,7 +656,7 @@ fn main() -> ! {
     }
 }
 
-fn make_http_request(socket: &mut Socket<WifiDevice>)  {
+fn make_http_request(socket: &mut Socket<WifiDevice>, url: &str)  {
     socket.work();
 
     socket
