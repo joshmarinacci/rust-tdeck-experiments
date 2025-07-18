@@ -206,20 +206,24 @@ struct BrowserTheme<'a> {
 
 struct CompoundMenu<'a> {
     menus:Vec<MenuView<'a>>,
-    focused:usize,
-    callback: Option<Box<dyn FnMut(&mut CompoundMenu, &str) + 'a>>,
+    focused:&'a str,
+    callback: Option<Box<dyn FnMut(&mut CompoundMenu, &str, &str) + 'a>>,
 }
 
 impl<'a> CompoundMenu<'a> {
-    pub(crate) fn hide_menu(&mut self, index:usize) {
-        let menu = &mut self.menus[index];
-        menu.hide();
-        self.focused = 0;
+    pub(crate) fn hide_menu(&mut self, id:&str) {
+        let menu = self.menus.iter_mut().find(|m|m.id == id);
+        if let Some(menu) = menu {
+            menu.hide();
+            self.focused = "main";
+        }
     }
-    pub(crate) fn open_menu(&mut self, index: usize) {
-        let menu = &mut self.menus[index];
-        menu.show();
-        self.focused = index;
+    pub fn open_menu(&mut self, id:&str) {
+        let menu = self.menus.iter_mut().find(|m|m.id == id);
+        if let Some(menu) = menu {
+            menu.show();
+            self.focused = menu.id;
+        }
     }
     pub(crate) fn hide(&mut self) {
         for menu in &mut self.menus {
@@ -232,14 +236,19 @@ impl<'a> CompoundMenu<'a> {
     fn handle_key_event(&mut self, key:u8) {
         info!("compound handling key event {}", key);
         if key == b'\r' {
-            let menu = &self.menus[self.focused];
-            let cmd =  menu.items[menu.highlighted_index];
-            info!("triggering action for {}", cmd);
-            let mut callback = self.callback.take().unwrap();
-            callback(self, cmd);
-            self.callback =  Some(callback);
+            let menu = self.menus.iter().find(|m|m.id == self.focused);
+            if let Some(menu) = menu {
+                let cmd = menu.items[menu.highlighted_index];
+                info!("triggering action for {}", cmd);
+                let mut callback = self.callback.take().unwrap();
+                callback(self, menu.id, cmd);
+                self.callback = Some(callback);
+            }
         } else {
-            self.menus[self.focused].handle_key_event(key);
+            let menu = self.menus.iter_mut().find(|m|m.id == self.focused);
+            if let Some(menu) = menu {
+                menu.handle_key_event(key);
+            }
         }
     }
     fn draw(&mut self, display: &mut Display<SpiInterface<ExclusiveDevice<Spi<Blocking>, Output, Delay>, Output>, ST7789, NoResetPin>) {
@@ -367,12 +376,11 @@ fn main() -> ! {
 
     let x_inset = 5;
     let mut dirty = true;
-    // let theme_menu = Rc::new(RefCell::new(MenuView::new("theme",&theme_menu_items, Point::new(50, 20))));
 
     let theme_menu = MenuView {
         id:"themes",
         dirty:true,
-        items: vec!["Dark", "Light", "close themes"],
+        items: vec!["Dark", "Light", "close"],
         position: Point::new(20,20),
         highlighted_index: 0,
         visible: false,
@@ -382,7 +390,7 @@ fn main() -> ! {
     let font_menu = MenuView {
         id:"fonts",
         dirty:true,
-        items: vec!["7x8", "8x12", "9x15","close fonts"],
+        items: vec!["7x8", "8x12", "9x15","close"],
         position: Point::new(20,20),
         highlighted_index: 0,
         visible: false,
@@ -392,7 +400,7 @@ fn main() -> ! {
     let main_menu = MenuView {
         id:"main",
         dirty: true,
-        items: vec!["Theme","Font","Wifi","close all"],
+        items: vec!["Theme","Font","Wifi","close"],
         position: Point::new(0,0),
         highlighted_index: 0,
         visible: true,
@@ -401,28 +409,35 @@ fn main() -> ! {
 
     let mut menu = CompoundMenu {
         menus: vec![],
-        focused: 0,
-        callback: Some(Box::new(|comp, cmd| {
-            if cmd == "Theme" {
-                comp.open_menu(1);
+        focused: "main",
+        callback: Some(Box::new(|comp, menu, cmd| {
+            info!("menu {} cmd {}",menu,cmd);
+            if menu == "main" {
+                if cmd == "Theme" {
+                    comp.open_menu("themes");
+                }
+                if cmd == "Font" {
+                    comp.open_menu("fonts");
+                }
+                if cmd == "close" {
+                    comp.hide();
+                }
             }
-            if cmd == "Font" {
-                comp.open_menu(2);
+            if menu == "themes" {
+                if cmd == "Dark" {
+                    theme.borrow_mut().insert(&dark_theme);
+                }
+                if cmd == "Light" {
+                    theme.borrow_mut().insert(&light_theme);
+                }
+                if cmd == "close" {
+                    comp.hide_menu("themes")
+                }
             }
-            if cmd == "Dark" {
-                theme.borrow_mut().insert(&dark_theme);
-            }
-            if cmd == "Light" {
-                theme.borrow_mut().insert(&light_theme);
-            }
-            if cmd == "close all" {
-                comp.hide();
-            }
-            if cmd == "close themes" {
-                comp.hide_menu(1);
-            }
-            if cmd == "close fonts" {
-                comp.hide_menu(2);
+            if menu == "fonts" {
+                if cmd == "close" {
+                    comp.hide_menu("fonts")
+                }
             }
         }))
     };
