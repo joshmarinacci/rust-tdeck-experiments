@@ -341,7 +341,7 @@ fn main() -> ! {
         link: MonoTextStyle::new(&FONT_9X15, Rgb565::BLUE),
         debug: MonoTextStyle::new(&FONT_9X15, Rgb565::CSS_ORANGE),
     };
-    let mut theme = &dark_theme;
+    let mut theme = Rc::new(RefCell::new(Some(&dark_theme)));
     let mut scroll_offset:i32 = 0;
 
     let viewport_height:i32 = (display.size().height / font.character_size.height) as i32;
@@ -367,112 +367,7 @@ fn main() -> ! {
 
     let x_inset = 5;
     let mut dirty = true;
-    let main_menu_items = vec![
-        "Theme",
-        "Font",
-        "Wifi",
-        "Close",
-    ];
-    let theme_menu_items = vec![
-        "Dark",
-        "Light",
-        "Close",
-    ];
-    let font_menu_items = vec![
-        "7x8",
-        "8x12",
-        "9x15",
-        "Close",
-    ];
-    let wifi_menu_items = vec![
-        "SSID1",
-        "SSID2",
-        "SSID3",
-        "Close",
-    ];
     // let theme_menu = Rc::new(RefCell::new(MenuView::new("theme",&theme_menu_items, Point::new(50, 20))));
-    // let wifi_menu = Rc::new(RefCell::new(MenuView::new("wifi",&wifi_menu_items, Point::new(50, 20))));
-    // let mut target = Rc::new(RefCell::new(MenuState{
-    //     target: MenuTarget::Main,
-    //     main_menu: MenuView::new("main",&main_menu_items, Point::new(0, 0)),
-    //     font_menu: MenuView::new("font",&font_menu_items, Point::new(50, 20)),
-    // }));
-
-    // target.borrow_mut().main_menu.callback = Some(Box::new({
-    //     // let theme_menu = theme_menu.clone();
-    //     // let font_menu = font_menu.clone();
-    //     // let wifi_menu = wifi_menu.clone();
-    //     // let main_menu = main_menu.clone();
-    //     let target = target.clone();
-    //     move |cmd,target|{
-    //         info!("Main Menu clicked {}",cmd);
-    //         if cmd == "Theme" {
-    //             // theme_menu.borrow_mut().show();
-    //             // target.borrow_mut().target = MenuTarget::Theme
-    //         }
-    //         if cmd == "Font" {
-    //             target.font_menu.show();
-    //             // target.borrow_mut().font_menu.borrow_mut().show();
-    //             // target.borrow_mut().target = MenuTarget::Font
-    //         }
-    //         if cmd == "Wifi" {
-    //             // wifi_menu.borrow_mut().show();
-    //             // target.borrow_mut().target = MenuTarget::Wifi
-    //         }
-    //         if cmd == "Close" {
-    //             // main_menu.borrow_mut().hide();
-    //             // target.borrow_mut().target = MenuTarget::Main
-    //         }
-    //         info!("done with event handler");
-    //     }}));
-
-    // theme_menu.borrow_mut().callback = Some(Box::new({
-    //     let theme_menu = theme_menu.clone();
-    //     let main_menu = main_menu.clone();
-    //     move |cmd:&str| {
-    //         info!("selected theme {}",cmd);
-    //         if cmd == "Dark" {
-    //             // theme = &dark_theme;
-    //             // dirty = true;
-    //         }
-    //         if cmd == "Light" {
-    //             // theme = &dark_theme;
-    //             // dirty = true;
-    //         }
-    //         if cmd == "Close" {
-    //             theme_menu.borrow_mut().hide();
-    //             main_menu.borrow_mut().dirty = true;
-    //         }
-    //     }
-    // }));
-
-    // font_menu.borrow_mut().callback = Some(Box::new({
-    //     let font_menu = font_menu.clone();
-    //     let main_menu = main_menu.clone();
-    //     let target = target.clone();
-    //     move |cmd:&str| {
-    //         info!("selected font {}",cmd);
-    //         if cmd == "Close" {
-    //             info!("closing the font menu");
-    //             // font_menu.borrow_mut().hide();
-    //             main_menu.borrow_mut().dirty = true;
-    //             target.borrow_mut().target = MenuTarget::Main;
-    //             info!("done");
-    //         }
-    //     }
-    // }));
-
-    // wifi_menu.borrow_mut().callback = Some(Box::new({
-    //     let wifi_menu = wifi_menu.clone();
-    //     let main_menu = main_menu.clone();
-    //     move |cmd:&str| {
-    //         info!("selected wifi {}",cmd);
-    //         if cmd == "Close" {
-    //             wifi_menu.borrow_mut().hide();
-    //             main_menu.borrow_mut().dirty = true;
-    //         }
-    //     }
-    // }));
 
     let theme_menu = MenuView {
         id:"themes",
@@ -515,10 +410,10 @@ fn main() -> ! {
                 comp.open_menu(2);
             }
             if cmd == "Dark" {
-                // theme = &dark_theme;
+                theme.borrow_mut().insert(&dark_theme);
             }
             if cmd == "Light" {
-                // theme = &light_theme;
+                theme.borrow_mut().insert(&light_theme);
             }
             if cmd == "close all" {
                 comp.hide();
@@ -540,6 +435,7 @@ fn main() -> ! {
         if (dirty) {
             dirty = false;
             // clear display
+            let theme = theme.borrow().unwrap();
             display.clear(theme.bg).unwrap();
             // info!("drawing lines at scroll {}", scroll_offset);
             // select the lines in the current viewport
