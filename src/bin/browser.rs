@@ -9,7 +9,10 @@
 
 use alloc::string::{String, ToString};
 use alloc::{format, vec};
+use alloc::boxed::Box;
+use alloc::rc::Rc;
 use alloc::vec::Vec;
+use core::cell::RefCell;
 use core::cmp::max;
 use core::ops::Add;
 use esp_hal::clock::CpuClock;
@@ -35,6 +38,7 @@ use embedded_graphics::mono_font::iso_8859_4::FONT_6X9;
 use embedded_graphics::mono_font::iso_8859_9::FONT_7X14;
 use embedded_graphics::mono_font::MonoFont;
 use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
+use esp_hal::aes::Key;
 use esp_hal::i2c::master::{BusTimeout, Config, I2c};
 use mipidsi::{models::ST7789, Builder, Display, NoResetPin};
 use mipidsi::interface::SpiInterface;
@@ -113,15 +117,23 @@ struct MenuView<'a> {
     highlighted_index: usize,
     visible: bool,
     dirty: bool,
+    callback: Option<Box<dyn FnMut(&mut MenuView, &str) + 'a>>
 }
 
 impl<'a> MenuView<'a> {
-    pub(crate) fn is_visible(&self) -> bool {
-        return self.visible;
+    pub(crate) fn handle_key_event(&mut self, key: u8) {
+        info!("Handling key event: {}", key);
+        match key {
+            b'j' => self.nav_prev(),
+            b'k' => self.nav_next(),
+            _ => {
+
+            }
+        }
     }
-}
-
-impl<'a> MenuView<'a> {
+    pub(crate) fn is_visible(&self) -> bool {
+        self.visible
+    }
     pub(crate) fn show(&mut self) {
         self.visible = true;
         self.dirty = true;
@@ -138,17 +150,15 @@ impl<'a> MenuView<'a> {
         self.highlighted_index = (self.highlighted_index + self.items.len() - 1) % self.items.len();
         self.dirty = true;
     }
-}
-
-impl MenuView<'_> {
-    fn new<'a>(id:&'a str, items: &Vec<&'a str>, p1: Point) -> MenuView<'a> {
+    fn new(id:&'a str, items: &Vec<&'a str>, p1: Point) -> MenuView<'a> {
         MenuView {
             id:id,
             items:items.to_vec(),
             position:p1,
             highlighted_index: 0,
             visible: false,
-            dirty: true
+            dirty: true,
+            callback: None
         }
     }
     fn draw(&mut self, display: &mut Display<SpiInterface<ExclusiveDevice<Spi<Blocking>, Output, Delay>, Output>, ST7789, NoResetPin>) {
@@ -181,7 +191,7 @@ impl MenuView<'_> {
             let text_style = MonoTextStyle::new(&font, fg);
             Text::new(&item, Point::new(pad,ly+lh -2 ).add(self.position), text_style).draw(display).unwrap();
         }
-        self.dirty = false;
+        // self.dirty = false;
     }
 }
 
@@ -193,6 +203,52 @@ struct BrowserTheme<'a> {
     link: MonoTextStyle<'a, Rgb565>,
     debug: MonoTextStyle<'a, Rgb565>,
 }
+
+struct CompoundMenu<'a> {
+    menus:Vec<MenuView<'a>>,
+    focused:usize,
+    callback: Option<Box<dyn FnMut(&mut CompoundMenu, &str) + 'a>>,
+}
+
+impl<'a> CompoundMenu<'a> {
+    pub(crate) fn hide_menu(&mut self, index:usize) {
+        let menu = &mut self.menus[index];
+        menu.hide();
+        self.focused = 0;
+    }
+    pub(crate) fn open_menu(&mut self, index: usize) {
+        let menu = &mut self.menus[index];
+        menu.show();
+        self.focused = index;
+    }
+    pub(crate) fn hide(&mut self) {
+        for menu in &mut self.menus {
+            menu.hide();
+        }
+    }
+    pub(crate) fn add_menu(&mut self, menu: MenuView<'a>) {
+        self.menus.push(menu);
+    }
+    fn handle_key_event(&mut self, key:u8) {
+        info!("compound handling key event {}", key);
+        if key == b'\r' {
+            let menu = &self.menus[self.focused];
+            let cmd =  menu.items[menu.highlighted_index];
+            info!("triggering action for {}", cmd);
+            let mut callback = self.callback.take().unwrap();
+            callback(self, cmd);
+            self.callback =  Some(callback);
+        } else {
+            self.menus[self.focused].handle_key_event(key);
+        }
+    }
+    fn draw(&mut self, display: &mut Display<SpiInterface<ExclusiveDevice<Spi<Blocking>, Output, Delay>, Output>, ST7789, NoResetPin>) {
+        for menu in &mut self.menus {
+            menu.draw(display);
+        }
+    }
+}
+
 #[main]
 fn main() -> ! {
     esp_println::logger::init_logger_from_env();
@@ -334,17 +390,158 @@ fn main() -> ! {
         "SSID3",
         "Close",
     ];
-    let mut main_menu = MenuView::new("main",&main_menu_items, Point::new(0, 0));
-    let mut theme_menu = MenuView::new("theme",&theme_menu_items, Point::new(50, 20));
-    let mut font_menu = MenuView::new("font",&font_menu_items, Point::new(50, 20));
-    let mut wifi_menu = MenuView::new("wifi",&wifi_menu_items, Point::new(50, 20));
-    let mut target_menu = "main";
+    // let theme_menu = Rc::new(RefCell::new(MenuView::new("theme",&theme_menu_items, Point::new(50, 20))));
+    // let wifi_menu = Rc::new(RefCell::new(MenuView::new("wifi",&wifi_menu_items, Point::new(50, 20))));
+    // let mut target = Rc::new(RefCell::new(MenuState{
+    //     target: MenuTarget::Main,
+    //     main_menu: MenuView::new("main",&main_menu_items, Point::new(0, 0)),
+    //     font_menu: MenuView::new("font",&font_menu_items, Point::new(50, 20)),
+    // }));
+
+    // target.borrow_mut().main_menu.callback = Some(Box::new({
+    //     // let theme_menu = theme_menu.clone();
+    //     // let font_menu = font_menu.clone();
+    //     // let wifi_menu = wifi_menu.clone();
+    //     // let main_menu = main_menu.clone();
+    //     let target = target.clone();
+    //     move |cmd,target|{
+    //         info!("Main Menu clicked {}",cmd);
+    //         if cmd == "Theme" {
+    //             // theme_menu.borrow_mut().show();
+    //             // target.borrow_mut().target = MenuTarget::Theme
+    //         }
+    //         if cmd == "Font" {
+    //             target.font_menu.show();
+    //             // target.borrow_mut().font_menu.borrow_mut().show();
+    //             // target.borrow_mut().target = MenuTarget::Font
+    //         }
+    //         if cmd == "Wifi" {
+    //             // wifi_menu.borrow_mut().show();
+    //             // target.borrow_mut().target = MenuTarget::Wifi
+    //         }
+    //         if cmd == "Close" {
+    //             // main_menu.borrow_mut().hide();
+    //             // target.borrow_mut().target = MenuTarget::Main
+    //         }
+    //         info!("done with event handler");
+    //     }}));
+
+    // theme_menu.borrow_mut().callback = Some(Box::new({
+    //     let theme_menu = theme_menu.clone();
+    //     let main_menu = main_menu.clone();
+    //     move |cmd:&str| {
+    //         info!("selected theme {}",cmd);
+    //         if cmd == "Dark" {
+    //             // theme = &dark_theme;
+    //             // dirty = true;
+    //         }
+    //         if cmd == "Light" {
+    //             // theme = &dark_theme;
+    //             // dirty = true;
+    //         }
+    //         if cmd == "Close" {
+    //             theme_menu.borrow_mut().hide();
+    //             main_menu.borrow_mut().dirty = true;
+    //         }
+    //     }
+    // }));
+
+    // font_menu.borrow_mut().callback = Some(Box::new({
+    //     let font_menu = font_menu.clone();
+    //     let main_menu = main_menu.clone();
+    //     let target = target.clone();
+    //     move |cmd:&str| {
+    //         info!("selected font {}",cmd);
+    //         if cmd == "Close" {
+    //             info!("closing the font menu");
+    //             // font_menu.borrow_mut().hide();
+    //             main_menu.borrow_mut().dirty = true;
+    //             target.borrow_mut().target = MenuTarget::Main;
+    //             info!("done");
+    //         }
+    //     }
+    // }));
+
+    // wifi_menu.borrow_mut().callback = Some(Box::new({
+    //     let wifi_menu = wifi_menu.clone();
+    //     let main_menu = main_menu.clone();
+    //     move |cmd:&str| {
+    //         info!("selected wifi {}",cmd);
+    //         if cmd == "Close" {
+    //             wifi_menu.borrow_mut().hide();
+    //             main_menu.borrow_mut().dirty = true;
+    //         }
+    //     }
+    // }));
+
+    let theme_menu = MenuView {
+        id:"themes",
+        dirty:true,
+        items: vec!["Dark", "Light", "close themes"],
+        position: Point::new(20,20),
+        highlighted_index: 0,
+        visible: false,
+        callback: None,
+    };
+
+    let font_menu = MenuView {
+        id:"fonts",
+        dirty:true,
+        items: vec!["7x8", "8x12", "9x15","close fonts"],
+        position: Point::new(20,20),
+        highlighted_index: 0,
+        visible: false,
+        callback: None,
+    };
+
+    let main_menu = MenuView {
+        id:"main",
+        dirty: true,
+        items: vec!["Theme","Font","Wifi","close all"],
+        position: Point::new(0,0),
+        highlighted_index: 0,
+        visible: true,
+        callback: None,
+    };
+
+    let mut menu = CompoundMenu {
+        menus: vec![],
+        focused: 0,
+        callback: Some(Box::new(|comp, cmd| {
+            if cmd == "Theme" {
+                comp.open_menu(1);
+            }
+            if cmd == "Font" {
+                comp.open_menu(2);
+            }
+            if cmd == "Dark" {
+                // theme = &dark_theme;
+            }
+            if cmd == "Light" {
+                // theme = &light_theme;
+            }
+            if cmd == "close all" {
+                comp.hide();
+            }
+            if cmd == "close themes" {
+                comp.hide_menu(1);
+            }
+            if cmd == "close fonts" {
+                comp.hide_menu(2);
+            }
+        }))
+    };
+    menu.add_menu(main_menu);
+    menu.add_menu(theme_menu);
+    menu.add_menu(font_menu);
+
+
     loop {
         if (dirty) {
             dirty = false;
             // clear display
             display.clear(theme.bg).unwrap();
-            info!("drawing lines at scroll {}", scroll_offset);
+            // info!("drawing lines at scroll {}", scroll_offset);
             // select the lines in the current viewport
             // draw the lines
             let mut end:usize = (scroll_offset + viewport_height) as usize;
@@ -369,10 +566,8 @@ fn main() -> ! {
             }
             // info!("heap is {}", esp_alloc::HEAP.stats());
         }
-        main_menu.draw(&mut display);
-        theme_menu.draw(&mut display);
-        font_menu.draw(&mut display);
-        wifi_menu.draw(&mut display);
+        // button.draw(&mut display);
+        menu.draw(&mut display);
 
         // wait for up and down actions
         let mut data = [0u8; 1];
@@ -380,114 +575,28 @@ fn main() -> ! {
         match kb_res {
             Ok(_) => {
                 if data[0] != 0x00 {
-                    info!("kb_res = {:?}", String::from_utf8_lossy(&data));
-                    // scroll up and down
-                    if data[0] == b'j' {
-                        if target_menu == "main" {
-                            main_menu.nav_prev();
-                        } else if target_menu == "theme" {
-                            theme_menu.nav_prev();
-                        } else if target_menu == "font" {
-                            font_menu.nav_prev();
-                        } else if target_menu == "wifi" {
-                            wifi_menu.nav_prev();
-                        } else {
-                            if scroll_offset + viewport_height < lines.len() as i32 {
-                                scroll_offset = scroll_offset + viewport_height;
-                            }
-                            dirty = true;
-                        }
-                    }
-                    if data[0] == b' ' {
-                        if target_menu == "main" {
-                            if main_menu.is_visible() {
-                                main_menu.hide();
-                            } else {
-                                main_menu.show();
-                            }
-                        }
-                        dirty = true;
-                    }
-                    if data[0] == b'k' {
-                        if target_menu == "main" {
-                            main_menu.nav_next();
-                        } else if target_menu == "theme" {
-                            theme_menu.nav_next();
-                        } else if target_menu == "font" {
-                            font_menu.nav_next();
-                        } else if target_menu == "wifi" {
-                            wifi_menu.nav_next();
-                        } else {
-                            scroll_offset = if (scroll_offset - viewport_height) >= 0 { scroll_offset - viewport_height } else { 0 };
-                            info!("scroll_offset = {}", scroll_offset);
-                            dirty = true;
-                        }
-                    }
-                    if data[0] == b'\r' {
-                        dirty = true;
-                        if target_menu == main_menu.id {
-                            let action = theme_menu.items[theme_menu.highlighted_index];
-                            // info!("selected item {}",action);
-                            if action == "Close" {
-                                main_menu.hide();
-                            }
-                            if main_menu.highlighted_index == 0 {
-                                theme_menu.show();
-                                target_menu = theme_menu.id;
-                                main_menu.dirty = true;
-                            }
-                            if main_menu.highlighted_index == 1 {
-                                font_menu.show();
-                                target_menu = font_menu.id;
-                                main_menu.dirty = true;
-                            }
-                            if main_menu.highlighted_index == 2 {
-                                wifi_menu.show();
-                                target_menu = wifi_menu.id;
-                                main_menu.dirty = true;
-                            }
-                        }
-                        if target_menu == theme_menu.id {
-                            let action = theme_menu.items[theme_menu.highlighted_index];
-                            // info!("selected item {}",action);
-                            if theme_menu.highlighted_index == 0 {
-                                theme = &dark_theme;
-                                dirty = true;
-                                theme_menu.dirty = true;
-                                main_menu.dirty = true;
-                            }
-                            if theme_menu.highlighted_index == 1 {
-                                theme = &light_theme;
-                                dirty = true;
-                                theme_menu.dirty = true;
-                                main_menu.dirty = true;
-                            }
-                            if action == "Close" {
-                                theme_menu.hide();
-                                target_menu = main_menu.id;
-                                theme_menu.dirty = true;
-                                main_menu.dirty = true;
-                            }
-                        }
-                        if target_menu == font_menu.id {
-                            let action = font_menu.items[font_menu.highlighted_index];
-                            info!("selected item {}",action);
-                            if action == "Close" {
-                                font_menu.hide();
-                                target_menu = main_menu.id;
-                                main_menu.dirty = true;
-                            }
-                        }
-                        if target_menu == wifi_menu.id {
-                            let action = wifi_menu.items[wifi_menu.highlighted_index];
-                            info!("selected item {}",action);
-                            if action == "Close" {
-                                wifi_menu.hide();
-                                target_menu = main_menu.id;
-                                main_menu.dirty = true;
-                            }
-                        }
-                    }
+                    // info!("kb_res = {:?}", String::from_utf8_lossy(&data));
+                    dirty = true;
+                    // if main_menu.is_visible() {
+                    menu.handle_key_event(data[0]);
+                    // } else {
+                    //     if data[0] == b' ' {
+                    //         main_menu.show();
+                    //     }
+                    // }
+                    //     if data[0] == b'j' {
+                    //         // scroll up and down
+                    //         if scroll_offset + viewport_height < lines.len() as i32 {
+                    //             scroll_offset = scroll_offset + viewport_height;
+                    //         }
+                    //         dirty = true;
+                    //     }
+                    //     if data[0] == b'k' {
+                    //         // scroll up and down
+                    //         scroll_offset = if (scroll_offset - viewport_height) >= 0 { scroll_offset - viewport_height } else { 0 };
+                    //         dirty = true;
+                    //     }
+                    // }
                 }
             },
             Err(e) => {
