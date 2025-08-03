@@ -21,6 +21,7 @@ esp-wifi = { version = "0.14.1", features = ["esp32s3", "wifi", "smoltcp"]}
 log = { version = "0.4.21" }
 smoltcp = { version = "0.12.0", default-features = false, features = ['medium-ethernet','socket-raw']}
 embedded-sdmmc = {  version = "0.9.0", features = ["log"] }
+gt911 = "0.3.0"
 
 [profile.dev]
 # Rust debug is too slow.
