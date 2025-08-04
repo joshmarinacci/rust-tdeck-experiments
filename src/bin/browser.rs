@@ -353,7 +353,7 @@ fn main() -> ! {
 
     // init the wifi chip
     let timg0 = TimerGroup::new(peripherals.TIMG0);
-    let esp_wifi_ctrl =  esp_wifi::init(timg0.timer0, rng.clone(), peripherals.RADIO_CLK).unwrap();
+    let esp_wifi_ctrl =  esp_wifi::init(timg0.timer0, rng.clone()).unwrap();
 
     // access the wifi controller
     let (mut controller, interfaces) =
