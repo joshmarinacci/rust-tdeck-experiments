@@ -21,7 +21,7 @@ use esp_hal::{
 };
 use esp_println::{println};
 use esp_wifi;
-use esp_wifi::wifi::{ClientConfiguration, Configuration, AccessPointInfo, WifiError};
+use esp_wifi::wifi::{ClientConfiguration, Configuration};
 use log::info;
 
 

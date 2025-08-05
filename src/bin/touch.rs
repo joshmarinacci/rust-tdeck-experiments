@@ -11,8 +11,8 @@ use esp_hal::gpio::Level::High;
 use esp_hal::gpio::{Output, OutputConfig};
 use esp_hal::i2c::master::{BusTimeout, Config, I2c};
 use esp_hal::main;
-use esp_hal::time::{Duration, Instant, Rate};
-use gt911::{Gt911, Gt911Blocking};
+use esp_hal::time::{Rate};
+use gt911::{Gt911Blocking};
 use log::info;
 
 #[panic_handler]

@@ -5,7 +5,7 @@ version = "0.1.0"
 
 [[bin]]
 name = "rust-tdeck-experiments"
-path = "./src/bin"
+path = "./src/bin/hello.rs"
 
 [dependencies]
 embedded-io = { version = "0.6.1" , default-features = false}
