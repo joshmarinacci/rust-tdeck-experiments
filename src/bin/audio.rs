@@ -28,6 +28,7 @@ const SINE: [i16; 64] = [
     -28897, -27244, -25329, -23169, -20787, -18204, -15446, -12539, -9511, -6392, -3211,
 ];
 
+const QUACK:&[u8] = include_bytes!("quack.wav");
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
@@ -62,7 +63,7 @@ fn main() -> !{
     let dma_channel = peripherals.DMA_CH0;
     // info!("peripherals {:?}",peripherals);
 
-    let (_, _, tx_buffer, tx_descriptors) = dma_buffers!(0, 32000);
+    let (_, _, tx_buffer, tx_descriptors) = dma_buffers!(0, 32000*2);
 
     let i2s = I2s::new(
         peripherals.I2S0,
@@ -96,15 +97,18 @@ fn main() -> !{
     // fill the buffer with the sine wave
     let buffer = tx_buffer;
     let mut idx = 0;
-    for i in 0..usize::max(data.len(), buffer.len()) {
-        buffer[i] = data[idx];
-
-        idx += 1;
-
-        if idx >= data.len() {
-            idx = 0;
-        }
+    for i in 0..buffer.len() {
+        buffer[i] = QUACK[i % QUACK.len()];
     }
+    // for i in 0..usize::max(data.len(), buffer.len()) {
+    //     buffer[i] = data[idx];
+    //
+    //     idx += 1;
+    //
+    //     if idx >= data.len() {
+    //         idx = 0;
+    //     }
+    // }
 
     let mut filler = [0u8; 10000];
     let mut idx = 32000 % data.len();
