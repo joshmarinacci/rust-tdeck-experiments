@@ -89,6 +89,8 @@ fn main() -> !{
         SAW[i] = (i as i16)*128;
     }
 
+    let mut saw_buffer = [0i16; 1024];
+    generate_sawtooth(&mut saw_buffer, 10_000); // amplitude up to +/- 10k
 
     // create unsafe data from the sine wave
     let data =
@@ -124,5 +126,15 @@ fn main() -> !{
         let written = transaction.push(&filler).unwrap();
         idx = (idx + written) % data.len();
         info!("written {}", written);
+    }
+}
+
+
+fn generate_sawtooth(buffer: &mut [i16], amplitude: i16) {
+    let len = buffer.len() as i16;
+    for i in 0..buffer.len() {
+        // Linearly ramp from -amplitude to +amplitude
+        let value = ((i as i32 * 2 * amplitude as i32) / len as i32) - amplitude as i32;
+        buffer[i] = value as i16;
     }
 }
