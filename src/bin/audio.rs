@@ -5,12 +5,16 @@
     reason = "mem::forget is generally not safe to do with esp_hal types, especially those \
     holding buffers for the duration of a data transfer."
 )]
+
 use esp_hal::clock::CpuClock;
-use esp_hal::{dma_buffers, main, peripherals};
 use esp_hal::delay::Delay;
-use esp_hal::i2s::master::{DataFormat, I2s};
-use esp_hal::i2s::master::Standard::Philips;
-use esp_hal::time::{Duration, Instant, Rate};
+use esp_hal::gpio::Level::High;
+use esp_hal::gpio::{Output, OutputConfig};
+use esp_hal::{dma_buffers, main};
+use esp_hal::i2s::master::{DataFormat, I2s, Standard};
+use esp_hal::time::Rate;
+use fixed_trigonometry::*;
+use fixed::{types::extra::U28, FixedI32};
 use log::info;
 
 #[panic_handler]
@@ -18,79 +22,105 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
+const SINE: [i16; 64] = [
+    0, 3211, 6392, 9511, 12539, 15446, 18204, 20787, 23169, 25329, 27244, 28897, 30272, 31356,
+    32137, 32609, 32767, 32609, 32137, 31356, 30272, 28897, 27244, 25329, 23169, 20787, 18204,
+    15446, 12539, 9511, 6392, 3211, 0, -3211, -6392, -9511, -12539, -15446, -18204, -20787, -23169,
+    -25329, -27244, -28897, -30272, -31356, -32137, -32609, -32767, -32609, -32137, -31356, -30272,
+    -28897, -27244, -25329, -23169, -20787, -18204, -15446, -12539, -9511, -6392, -3211,
+];
+
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
 
 extern crate alloc;
 
-// #[main]
-// fn main() -> ! {
-//     esp_println::logger::init_logger_from_env();
-//     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
-//     esp_hal::init(config);
-//
-//     esp_alloc::heap_allocator!(size: 72 * 1024);
-//
-//     info!("running");
-//
-//     loop {
-//         info!("Hello world!");
-//         let delay_start = Instant::now();
-//         while delay_start.elapsed() < Duration::from_millis(500) {}
-//     }
-// }
-
-
-const DATA_SIZE: usize = 1024 * 10;
-
 #[main]
-fn main() -> ! {
+fn main() -> !{
     esp_println::logger::init_logger_from_env();
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
+    info!("Init!");
     esp_alloc::heap_allocator!(size: 72 * 1024);
 
+
+    let mut board_power = Output::new(peripherals.GPIO10, High, OutputConfig::default());
+    board_power.set_high();
     let delay = Delay::new();
+    delay.delay_millis(1000);
 
-    // let system = peripherals.SYSTEM.split();
-    // let clocks = ClockControl::boot_defaults(system.clock_control).freeze();
+    // let timg0 = TimerGroup::new(peripherals.TIMG0);
+    // esp_hal_embassy::init(timg0.timer0);
 
-    // let io = peripherals.GPIO.split();
 
-    let bclk = peripherals.GPIO7;// .io.pins.gpio7;
-    let lrclk = peripherals.GPIO5;
-    // let lrclk = io.pins.gpio5;
-    // let dout = io.pins.gpio6;
-    let dout = peripherals.GPIO6;
-    // let dma = peripherals.DMA1;
+    //     if #[cfg(any(feature = "esp32", feature = "esp32s2"))] {
+    //         let dma_channel = peripherals.DMA_I2S0;
+    //     } else {
+    //         let dma_channel = peripherals.DMA_CH0;
+    //     }
+    // }
 
-    let (rx_buffer, rx_descriptors, tx_buffer, tx_descriptors) = dma_buffers!(DATA_SIZE);
+    let dma_channel = peripherals.DMA_CH0;
+    // info!("peripherals {:?}",peripherals);
 
-    // let dma = peripherals.D;
-    // I2s::new(peripherals.I2S0, bclk, lrclk, dout)
-    // let mut i2s = I2s::new(
-    //     peripherals.I2S0,
-    //     esp_hal::i2s::master::Standard::Philips,
-    //     DataFormat::Data16Channel16,
-    //     Rate::from_hz(44100u32),
-    // );
+    let (_, _, tx_buffer, tx_descriptors) = dma_buffers!(0, 32000);
 
-    //     bclk,
-    //     lrclk,
-    //     Some(dout),
-    //     None,
-    //     &clocks,
-    // )
-    //     .unwrap();
+    let i2s = I2s::new(
+        peripherals.I2S0,
+        Standard::Philips,
+        DataFormat::Data16Channel16,
+        Rate::from_hz(44100),
+        dma_channel,
+    );
+        // .into_async();
 
-    // 16-bit mono sample (e.g., 440Hz sine wave or square wave)
-    let sample: i16 = 3000;
+    // #define BOARD_I2S_WS        5
+    // #define BOARD_I2S_BCK       7
+    // #define BOARD_I2S_DOUT      6
+    let mut i2s_tx = i2s
+        .i2s_tx
+        .with_bclk(peripherals.GPIO7)
+        .with_ws(peripherals.GPIO5)
+        .with_dout(peripherals.GPIO6)
+        .build(tx_descriptors);
 
+    let mut SAW: [i16; 256] = [0;256];
+    for i in 0..256 {
+        SAW[i] = (i as i16)*128;
+    }
+
+
+    // create unsafe data from the sine wave
+    let data =
+        unsafe { core::slice::from_raw_parts(&SAW as *const _ as *const u8, SAW.len() * 2) };
+
+    // fill the buffer with the sine wave
+    let buffer = tx_buffer;
+    let mut idx = 0;
+    for i in 0..usize::max(data.len(), buffer.len()) {
+        buffer[i] = data[idx];
+
+        idx += 1;
+
+        if idx >= data.len() {
+            idx = 0;
+        }
+    }
+
+    let mut filler = [0u8; 10000];
+    let mut idx = 32000 % data.len();
+
+    info!("Start");
+    let mut transaction = i2s_tx.write_dma_circular(buffer).unwrap();
     loop {
-    //     let buf = [sample; 64]; // 64 samples per write
-    //     i2s.write(&buf).unwrap();
+        for i in 0..filler.len() {
+            filler[i] = data[(idx + i) % data.len()];
+        }
+        info!("Next");
 
-        delay.delay_millis(100);
+        let written = transaction.push(&filler).unwrap();
+        idx = (idx + written) % data.len();
+        info!("written {}", written);
     }
 }
