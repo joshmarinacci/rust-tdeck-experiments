@@ -111,7 +111,7 @@ fn main() -> ! {
 
     println!("Start Wifi Scan");
     let res = controller.scan_n(10); // 10 sec timeout?
-    if let Ok((res)) = res {
+    if let Ok(res) = res {
         for ap in res {
             println!("{:?}", ap);
         }

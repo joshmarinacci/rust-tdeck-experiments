@@ -13,8 +13,6 @@ use esp_hal::gpio::{Output, OutputConfig};
 use esp_hal::{dma_buffers, main};
 use esp_hal::i2s::master::{DataFormat, I2s, Standard};
 use esp_hal::time::Rate;
-use fixed_trigonometry::*;
-use fixed::{types::extra::U28, FixedI32};
 use log::info;
 
 #[panic_handler]
