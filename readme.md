@@ -20,7 +20,7 @@ the screen, and access the trackball.
 * [display](src/bin/display.rs) Draws text and background colors to the screen
 * [info](src/bin/info.rs) Shows how to get info on the board including the chip name, free memory, and the MAC address.
 * [keyboard](src/bin/keyboard.rs). Poll the keyboard for keystrokes over the I2C bus.
-* [sdcard](src/bin/sdcard.rs). List files from the SD card. **currently broken, I think**.
+* [sdcard](src/bin/sdcard.rs). List files from the SD card. **NOTE** Requires and SD card formatted with FAT/MSFAT. ExtFat doesn't seem to work.
 * [term](src/bin/term.rs). Prints the typed text to the screen
 * [touch](src/bin/touch.rs). Polls for events from the touch screen. **New!**
 * [trackball](src/bin/trackball.rs). Polls the trackball for motion events and clicks.
