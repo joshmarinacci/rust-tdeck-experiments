@@ -24,7 +24,7 @@ embedded-sdmmc = {  version = "0.9.0", features = ["log"] }
 gt911 = "0.3.0"
 esp-hal-embassy = {  version = "0.9.0", features = ["esp32s3"] }
 embassy-executor = {  version = "0.7.0", features = ["log", "task-arena-size-65536"] }
-
+micromath = "2.1.0"
 [profile.dev]
 # Rust debug is too slow.
 # For debug builds always builds with some optimization

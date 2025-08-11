@@ -29,7 +29,13 @@
 
 #![no_std]
 #![no_main]
+extern crate alloc;
 
+use alloc::vec;
+use alloc::vec::Vec;
+use core::error::Error;
+use core::f32::consts::TAU;
+use core::time::Duration;
 use embassy_executor::Spawner;
 // use esp_backtrace as _;
 use esp_hal::{
@@ -44,6 +50,7 @@ use esp_hal::gpio::Level::High;
 use esp_hal::gpio::{Output, OutputConfig};
 
 use log::{error, info};
+use micromath::F32Ext;
 
 #[panic_handler]
 fn panic(nfo: &core::panic::PanicInfo) -> ! {
@@ -62,6 +69,45 @@ const SINE: [i16; 64] = [
     -25329, -27244, -28897, -30272, -31356, -32137, -32609, -32767, -32609, -32137, -31356, -30272,
     -28897, -27244, -25329, -23169, -20787, -18204, -15446, -12539, -9511, -6392, -3211,
 ];
+
+const TIMEOUT: Duration = Duration::from_millis(100);
+const SAMPLE_RATE_HZ: u32 = 44100;
+
+fn make_sawtooth(freq:f32, vol:f32) -> Vec<u8> {
+    let buffer_size = (SAMPLE_RATE_HZ as f32 / freq) as usize;
+    let mut buffer = vec![0; buffer_size * 4];
+    let mut value: f32 = 0.0;
+    let mut value_inc = 0.1 / (buffer_size as f32);
+
+    for i in (0..buffer.len()).step_by(4) {
+        let i_value = (value * vol * (i16::MAX as f32)) as i16 as u16;
+
+        buffer[i] = (i_value & 0x00ff) as u8;
+        buffer[i + 1] = ((i_value & 0xff00) >> 8) as u8;
+        buffer[i + 2] = (i_value & 0x00ff) as u8;
+        buffer[i + 3] = ((i_value & 0xff00) >> 8) as u8;
+        value += value_inc;
+
+        if value_inc > 0.0 && value > 1.0 {
+            value = 2.0 - value;
+            value_inc = -value_inc;
+        } else if value_inc < 0.0 && value < 1.0 {
+            value = -2.0 - value;
+            value_inc = -value_inc;
+        }
+    }
+
+    buffer
+}
+
+fn make_sawtooth_sample(freq:f32, vol:f32, i:usize) -> u16 {
+    let buffer_size = (SAMPLE_RATE_HZ as f32 / freq) as usize;
+    let mut value: f32 = 0.0;
+    let mut value_inc = 0.1 / (buffer_size as f32);
+    let value = value_inc * (i as f32);
+    let i_value = (value * vol * (i16::MAX as f32)) as i16 as u16;
+    return i_value;
+}
 
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner) {
@@ -103,6 +149,7 @@ async fn main(spawner: Spawner) {
 
     let data =
         unsafe { core::slice::from_raw_parts(&SINE as *const _ as *const u8, SINE.len() * 2) };
+    // let data = make_sawtooth(240.0, 0.2);
 
     let buffer = tx_buffer;
     let mut idx = 0;
@@ -121,14 +168,31 @@ async fn main(spawner: Spawner) {
 
     info!("Start");
     let mut transaction = i2s_tx.write_dma_circular_async(buffer).unwrap();
+    let freq = 120.0*2.0;
+    const OMEGA_INC: f32 = TAU / SAMPLE_RATE_HZ as f32;
+    let mut omega:f32 = 0.0;
+    let mut count = 0;
+    let mut vol:f32 = 0.1;
     loop {
-        for i in 0..filler.len() {
-            filler[i] = data[(idx + i) % data.len()];
+        for i in (0..filler.len()).step_by(2) {
+            filler[i]   = data[(idx + i)   % data.len()];
+            filler[i+1] = data[(idx + i+1) % data.len()];
+            // let sample = ((omega * freq).sin() * vol * (i16::MAX as f32)) as u16;
+            // filler[i] = (sample & 0x00ff) as u8;
+            // filler[i + 1] = ((sample & 0xff00) >> 8) as u8;
+            // omega += OMEGA_INC;
+            // if omega >= TAU {
+            //     omega -= TAU;
+            // }
         }
         info!("Next");
 
         let written = transaction.push(&filler).await.unwrap();
         idx = (idx + written) % data.len();
         info!("written {}", written);
+        count += 1;
+        if count >= 20 {
+            break;
+        }
     }
 }

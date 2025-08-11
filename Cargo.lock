@@ -1348,6 +1348,7 @@ dependencies = [
  "esp-wifi",
  "gt911",
  "log",
+ "micromath",
  "mipidsi",
  "smoltcp",
 ]
