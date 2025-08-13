@@ -1,13 +1,12 @@
 #![no_std]
 #![no_main]
-use esp_hal::clock::CpuClock;
-use esp_hal::gpio::{Output, OutputConfig};
 use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
+use esp_hal::clock::CpuClock;
 use esp_hal::delay::Delay;
-use esp_hal::gpio::Level::{High};
+use esp_hal::gpio::Level::High;
+use esp_hal::gpio::{Output, OutputConfig};
 use esp_hal::main;
 use log::info;
-
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -44,5 +43,4 @@ fn main() -> ! {
         info!("bat adc is {} ", pin_value);
         delay.delay_millis(1500);
     }
-
 }

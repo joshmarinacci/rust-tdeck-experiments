@@ -3,14 +3,13 @@
 
 use alloc::string::String;
 use esp_hal::clock::CpuClock;
-use esp_hal::gpio::{Output, OutputConfig};
 use esp_hal::delay::Delay;
-use esp_hal::gpio::Level::{High};
+use esp_hal::gpio::Level::High;
+use esp_hal::gpio::{Output, OutputConfig};
 use esp_hal::i2c::master::{BusTimeout, Config, I2c};
 use esp_hal::main;
-use esp_hal::time::{Rate};
+use esp_hal::time::Rate;
 use log::info;
-
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -19,7 +18,7 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
 
 extern crate alloc;
 
-pub const LILYGO_KB_I2C_ADDRESS: u8 =     0x55;
+pub const LILYGO_KB_I2C_ADDRESS: u8 = 0x55;
 
 #[main]
 fn main() -> ! {
@@ -39,11 +38,13 @@ fn main() -> ! {
 
     let mut i2c = I2c::new(
         peripherals.I2C0,
-        Config::default().with_frequency(Rate::from_khz(100)).with_timeout(BusTimeout::Disabled),
+        Config::default()
+            .with_frequency(Rate::from_khz(100))
+            .with_timeout(BusTimeout::Disabled),
     )
-        .unwrap()
-        .with_sda(peripherals.GPIO18)
-        .with_scl(peripherals.GPIO8);
+    .unwrap()
+    .with_sda(peripherals.GPIO18)
+    .with_scl(peripherals.GPIO8);
 
     info!("looping over the keyboard");
     loop {
@@ -55,13 +56,11 @@ fn main() -> ! {
                     info!("kb_res = {:?}", String::from_utf8_lossy(&data));
                     delay.delay_millis(100);
                 }
-            },
+            }
             Err(e) => {
                 info!("kb_res = {}", e);
                 delay.delay_millis(1000);
             }
         }
     }
-
 }
-

@@ -6,13 +6,12 @@
     holding buffers for the duration of a data transfer."
 )]
 use esp_hal::clock::CpuClock;
-use esp_hal::gpio::{Input, InputConfig, Output, OutputConfig, Pull};
 use esp_hal::delay::Delay;
-use esp_hal::gpio::Level::{High};
+use esp_hal::gpio::Level::High;
+use esp_hal::gpio::{Input, InputConfig, Output, OutputConfig, Pull};
 use esp_hal::main;
 use esp_hal::time::{Duration, Instant};
 use log::info;
-
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -38,13 +37,27 @@ fn main() -> ! {
     board_power.set_high();
     delay.delay_millis(1000);
 
-    
     // set up the trackball button pin
-    let tdeck_track_click = Input::new(peripherals.GPIO0, InputConfig::default().with_pull(Pull::Up));
-    let tdeck_trackball_right = Input::new(peripherals.GPIO2, InputConfig::default().with_pull(Pull::Up));
-    let tdeck_trackball_left = Input::new(peripherals.GPIO1, InputConfig::default().with_pull(Pull::Up));
-    let tdeck_trackball_up = Input::new(peripherals.GPIO3, InputConfig::default().with_pull(Pull::Up));
-    let tdeck_trackball_down = Input::new(peripherals.GPIO15, InputConfig::default().with_pull(Pull::Up));
+    let tdeck_track_click = Input::new(
+        peripherals.GPIO0,
+        InputConfig::default().with_pull(Pull::Up),
+    );
+    let tdeck_trackball_right = Input::new(
+        peripherals.GPIO2,
+        InputConfig::default().with_pull(Pull::Up),
+    );
+    let tdeck_trackball_left = Input::new(
+        peripherals.GPIO1,
+        InputConfig::default().with_pull(Pull::Up),
+    );
+    let tdeck_trackball_up = Input::new(
+        peripherals.GPIO3,
+        InputConfig::default().with_pull(Pull::Up),
+    );
+    let tdeck_trackball_down = Input::new(
+        peripherals.GPIO15,
+        InputConfig::default().with_pull(Pull::Up),
+    );
     let mut last_right_high = false;
     let mut last_left_high = false;
     let mut last_up_high = false;
@@ -73,5 +86,4 @@ fn main() -> ! {
         let delay_start = Instant::now();
         while delay_start.elapsed() < Duration::from_millis(1) {}
     }
-
 }

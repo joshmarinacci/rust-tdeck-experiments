@@ -6,28 +6,26 @@
     holding buffers for the duration of a data transfer."
 )]
 
+use embedded_hal_bus::spi::ExclusiveDevice;
 use esp_hal::clock::CpuClock;
-use esp_hal::gpio::{Input, InputConfig, Output, OutputConfig, Pull};
 use esp_hal::delay::Delay;
 use esp_hal::gpio::Level::{High, Low};
+use esp_hal::gpio::{Input, InputConfig, Output, OutputConfig, Pull};
 use esp_hal::main;
-use esp_hal::spi::{ master::{Spi, Config as SpiConfig } };
+use esp_hal::spi::master::{Config as SpiConfig, Spi};
 use esp_hal::time::{Duration, Instant, Rate};
 use log::info;
-use embedded_hal_bus::spi::ExclusiveDevice;
 
-
-use embedded_graphics::{
-    pixelcolor::Rgb565,
-    prelude::*,
-    text::Text,
-    mono_font::{ ascii::FONT_6X10, MonoTextStyle}
-};
 use embedded_graphics::mono_font::ascii::FONT_10X20;
 use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
-use mipidsi::{models::ST7789, Builder};
+use embedded_graphics::{
+    mono_font::{ascii::FONT_6X10, MonoTextStyle},
+    pixelcolor::Rgb565,
+    prelude::*,
+};
 use mipidsi::interface::SpiInterface;
 use mipidsi::options::{ColorInversion, ColorOrder, Orientation, Rotation};
+use mipidsi::{models::ST7789, Builder};
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -55,14 +53,16 @@ fn main() -> ! {
     board_power.set_high();
     delay.delay_millis(1000);
 
-
     // ==== display setup ====
     // https://github.com/Xinyuan-LilyGO/T-Deck/blob/master/examples/HelloWorld/HelloWorld.ino
 
     // set TFT CS to high
     let mut tft_cs = Output::new(peripherals.GPIO12, High, OutputConfig::default());
     tft_cs.set_high();
-    let tft_miso = Input::new(peripherals.GPIO38, InputConfig::default().with_pull(Pull::Up));
+    let tft_miso = Input::new(
+        peripherals.GPIO38,
+        InputConfig::default().with_pull(Pull::Up),
+    );
     let tft_sck = peripherals.GPIO40;
     let tft_mosi = peripherals.GPIO41;
     let tft_dc = Output::new(peripherals.GPIO11, Low, OutputConfig::default());
@@ -70,14 +70,14 @@ fn main() -> ! {
     tft_enable.set_high();
 
     info!("creating spi device");
-    let spi = Spi::new(peripherals.SPI2, SpiConfig::default()
-        .with_frequency(Rate::from_mhz(40))
-                       // .with_mode(Mode::_0)
-    ).unwrap()
-        .with_sck(tft_sck)
-        .with_miso(tft_miso)
-        .with_mosi(tft_mosi)
-        ;
+    let spi = Spi::new(
+        peripherals.SPI2,
+        SpiConfig::default().with_frequency(Rate::from_mhz(40)), // .with_mode(Mode::_0)
+    )
+    .unwrap()
+    .with_sck(tft_sck)
+    .with_miso(tft_miso)
+    .with_mosi(tft_mosi);
     let mut buffer = [0u8; 512];
 
     info!("setting up the display");
@@ -85,29 +85,31 @@ fn main() -> ! {
     let spi_device = ExclusiveDevice::new(spi, tft_cs, spi_delay).unwrap();
     let di = SpiInterface::new(spi_device, tft_dc, &mut buffer);
     info!("building");
-    let mut display = Builder::new(ST7789,di)
+    let mut display = Builder::new(ST7789, di)
         // .reset_pin(tft_enable)
-        .display_size(240,320)
+        .display_size(240, 320)
         .invert_colors(ColorInversion::Inverted)
         .color_order(ColorOrder::Rgb)
         .orientation(Orientation::new().rotate(Rotation::Deg90))
         // .display_size(320,240)
-        .init(&mut delay).unwrap();
+        .init(&mut delay)
+        .unwrap();
 
     info!("initialized display");
     // wait for everything to boot up
     // delay.delay_millis(500);
-    display.set_vertical_scroll_region(0,0).unwrap();
+    display.set_vertical_scroll_region(0, 0).unwrap();
     let style = MonoTextStyle::new(&FONT_10X20, Rgb565::BLACK);
-    let mut offset:u16 = 100;
+    let mut offset: u16 = 100;
     while true {
         display.clear(Rgb565::WHITE).unwrap();
         // for i in 0..5 {
         //     Text::new("Hello Rust!", Point::new(20, i*30), style).draw(&mut display).unwrap();
         // }
-        Rectangle::new(Point::new(offset as i32,0), Size::new(30, 30))
+        Rectangle::new(Point::new(offset as i32, 0), Size::new(30, 30))
             .into_styled(PrimitiveStyle::with_fill(Rgb565::RED))
-            .draw(&mut display).unwrap();
+            .draw(&mut display)
+            .unwrap();
         delay.delay_millis(1);
         offset -= 1;
         display.set_vertical_scroll_offset(offset).unwrap();
@@ -120,6 +122,4 @@ fn main() -> ! {
         let delay_start = Instant::now();
         while delay_start.elapsed() < Duration::from_millis(500) {}
     }
-
 }
-

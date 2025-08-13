@@ -2,28 +2,22 @@
 #![no_main]
 
 use alloc::string::String;
+use embedded_hal_bus::spi::ExclusiveDevice;
 use esp_hal::clock::CpuClock;
-use esp_hal::gpio::{Input, InputConfig, Output, OutputConfig, Pull};
 use esp_hal::delay::Delay;
 use esp_hal::gpio::Level::{High, Low};
+use esp_hal::gpio::{Input, InputConfig, Output, OutputConfig, Pull};
 use esp_hal::i2c::master::{BusTimeout, Config, I2c};
 use esp_hal::main;
-use esp_hal::spi::{ master::{Spi, Config as SpiConfig } };
-use esp_hal::time::{Rate};
+use esp_hal::spi::master::{Config as SpiConfig, Spi};
+use esp_hal::time::Rate;
 use log::info;
-use embedded_hal_bus::spi::ExclusiveDevice;
 
-
-use embedded_graphics::{
-    pixelcolor::Rgb565,
-    prelude::*,
-    text::Text,
-    mono_font::{ MonoTextStyle}
-};
 use embedded_graphics::mono_font::ascii::FONT_8X13;
-use mipidsi::{models::ST7789, Builder};
+use embedded_graphics::{mono_font::MonoTextStyle, pixelcolor::Rgb565, prelude::*, text::Text};
 use mipidsi::interface::SpiInterface;
 use mipidsi::options::{ColorInversion, ColorOrder, Orientation, Rotation};
+use mipidsi::{models::ST7789, Builder};
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -32,7 +26,7 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
 
 extern crate alloc;
 
-pub const LILYGO_KB_I2C_ADDRESS: u8 =     0x55;
+pub const LILYGO_KB_I2C_ADDRESS: u8 = 0x55;
 
 #[main]
 fn main() -> ! {
@@ -49,14 +43,16 @@ fn main() -> ! {
     board_power.set_high();
     delay.delay_millis(1000);
 
-
     // ==== display setup ====
     // https://github.com/Xinyuan-LilyGO/T-Deck/blob/master/examples/HelloWorld/HelloWorld.ino
 
     // set TFT CS to high
     let mut tft_cs = Output::new(peripherals.GPIO12, High, OutputConfig::default());
     tft_cs.set_high();
-    let tft_miso = Input::new(peripherals.GPIO38, InputConfig::default().with_pull(Pull::Up));
+    let tft_miso = Input::new(
+        peripherals.GPIO38,
+        InputConfig::default().with_pull(Pull::Up),
+    );
     let tft_sck = peripherals.GPIO40;
     let tft_mosi = peripherals.GPIO41;
     let tft_dc = Output::new(peripherals.GPIO11, Low, OutputConfig::default());
@@ -64,14 +60,14 @@ fn main() -> ! {
     tft_enable.set_high();
 
     info!("creating spi device");
-    let spi = Spi::new(peripherals.SPI2, SpiConfig::default()
-        .with_frequency(Rate::from_mhz(40))
-                           // .with_mode(Mode::_0)
-    ).unwrap()
-        .with_sck(tft_sck)
-        .with_miso(tft_miso)
-        .with_mosi(tft_mosi)
-        ;
+    let spi = Spi::new(
+        peripherals.SPI2,
+        SpiConfig::default().with_frequency(Rate::from_mhz(40)), // .with_mode(Mode::_0)
+    )
+    .unwrap()
+    .with_sck(tft_sck)
+    .with_miso(tft_miso)
+    .with_mosi(tft_mosi);
     let mut buffer = [0u8; 512];
 
     info!("setting up the display");
@@ -79,34 +75,37 @@ fn main() -> ! {
     let spi_device = ExclusiveDevice::new(spi, tft_cs, spi_delay).unwrap();
     let di = SpiInterface::new(spi_device, tft_dc, &mut buffer);
     info!("building");
-    let mut display = Builder::new(ST7789,di)
+    let mut display = Builder::new(ST7789, di)
         // .reset_pin(tft_enable)
-        .display_size(240,320)
+        .display_size(240, 320)
         .orientation(Orientation::new().rotate(Rotation::Deg90))
         .invert_colors(ColorInversion::Inverted)
         .color_order(ColorOrder::Rgb)
         // .display_size(320,240)
-        .init(&mut delay).unwrap();
-
+        .init(&mut delay)
+        .unwrap();
 
     // wait for everything to boot up
     // delay.delay_millis(500);
     // let colors = [Rgb565::BLACK, Rgb565::WHITE, Rgb565::RED, Rgb565::GREEN, Rgb565::BLUE];
 
-
     let mut i2c = I2c::new(
         peripherals.I2C0,
-        Config::default().with_frequency(Rate::from_khz(100)).with_timeout(BusTimeout::Disabled),
+        Config::default()
+            .with_frequency(Rate::from_khz(100))
+            .with_timeout(BusTimeout::Disabled),
     )
-        .unwrap()
-        .with_sda(peripherals.GPIO18)
-        .with_scl(peripherals.GPIO8);
+    .unwrap()
+    .with_sda(peripherals.GPIO18)
+    .with_scl(peripherals.GPIO8);
     info!("initialized");
 
     let style = MonoTextStyle::new(&FONT_8X13, Rgb565::WHITE);
     display.clear(Rgb565::BLACK).unwrap();
     let mut text = String::from("?");
-    Text::new(&text, Point::new(20, 30), style).draw(&mut display).unwrap();
+    Text::new(&text, Point::new(20, 30), style)
+        .draw(&mut display)
+        .unwrap();
 
     loop {
         let mut data = [0u8; 1];
@@ -119,21 +118,21 @@ fn main() -> ! {
                         info!("backspace");
                         text.pop();
                     } else {
-                        info!("kb_res {}",data[0]);
+                        info!("kb_res {}", data[0]);
                         let typed = String::from_utf8_lossy(&data);
                         info!("kb_res = {:?}", typed);
                         text.push_str(&typed);
                     }
                     display.clear(Rgb565::BLACK).unwrap();
-                    Text::new(&text, Point::new(20, 30), style).draw(&mut display).unwrap();
+                    Text::new(&text, Point::new(20, 30), style)
+                        .draw(&mut display)
+                        .unwrap();
                 }
-            },
+            }
             Err(e) => {
                 info!("kb_res = {}", e);
                 delay.delay_millis(1000);
             }
         }
     }
-
 }
-

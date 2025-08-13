@@ -10,9 +10,9 @@ use esp_hal::clock::CpuClock;
 use esp_hal::delay::Delay;
 use esp_hal::gpio::Level::High;
 use esp_hal::gpio::{Output, OutputConfig};
-use esp_hal::{dma_buffers, main};
 use esp_hal::i2s::master::{DataFormat, I2s, Standard};
 use esp_hal::time::Rate;
+use esp_hal::{dma_buffers, main};
 use log::info;
 
 #[panic_handler]
@@ -28,7 +28,7 @@ const SINE: [i16; 64] = [
     -28897, -27244, -25329, -23169, -20787, -18204, -15446, -12539, -9511, -6392, -3211,
 ];
 
-const QUACK:&[u8] = include_bytes!("quack.wav");
+const QUACK: &[u8] = include_bytes!("quack.wav");
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
@@ -36,13 +36,12 @@ esp_bootloader_esp_idf::esp_app_desc!();
 extern crate alloc;
 
 #[main]
-fn main() -> !{
+fn main() -> ! {
     esp_println::logger::init_logger_from_env();
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
     info!("Init!");
     esp_alloc::heap_allocator!(size: 72 * 1024);
-
 
     let mut board_power = Output::new(peripherals.GPIO10, High, OutputConfig::default());
     board_power.set_high();
@@ -51,7 +50,6 @@ fn main() -> !{
 
     // let timg0 = TimerGroup::new(peripherals.TIMG0);
     // esp_hal_embassy::init(timg0.timer0);
-
 
     //     if #[cfg(any(feature = "esp32", feature = "esp32s2"))] {
     //         let dma_channel = peripherals.DMA_I2S0;
@@ -63,7 +61,7 @@ fn main() -> !{
     let dma_channel = peripherals.DMA_CH0;
     // info!("peripherals {:?}",peripherals);
 
-    let (_, _, tx_buffer, tx_descriptors) = dma_buffers!(0, 32000*2);
+    let (_, _, tx_buffer, tx_descriptors) = dma_buffers!(0, 32000 * 2);
 
     let i2s = I2s::new(
         peripherals.I2S0,
@@ -72,7 +70,7 @@ fn main() -> !{
         Rate::from_hz(44100),
         dma_channel,
     );
-        // .into_async();
+    // .into_async();
 
     // #define BOARD_I2S_WS        5
     // #define BOARD_I2S_BCK       7
@@ -84,17 +82,16 @@ fn main() -> !{
         .with_dout(peripherals.GPIO6)
         .build(tx_descriptors);
 
-    let mut SAW: [i16; 256] = [0;256];
+    let mut SAW: [i16; 256] = [0; 256];
     for i in 0..256 {
-        SAW[i] = (i as i16)*128;
+        SAW[i] = (i as i16) * 128;
     }
 
     let mut saw_buffer = [0i16; 1024];
     generate_sawtooth(&mut saw_buffer, 10_000); // amplitude up to +/- 10k
 
     // create unsafe data from the sine wave
-    let data =
-        unsafe { core::slice::from_raw_parts(&SAW as *const _ as *const u8, SAW.len() * 2) };
+    let data = unsafe { core::slice::from_raw_parts(&SAW as *const _ as *const u8, SAW.len() * 2) };
 
     // fill the buffer with the sine wave
     let buffer = tx_buffer;
@@ -128,7 +125,6 @@ fn main() -> !{
         info!("written {}", written);
     }
 }
-
 
 fn generate_sawtooth(buffer: &mut [i16], amplitude: i16) {
     let len = buffer.len() as i16;

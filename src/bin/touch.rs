@@ -11,8 +11,8 @@ use esp_hal::gpio::Level::High;
 use esp_hal::gpio::{Output, OutputConfig};
 use esp_hal::i2c::master::{BusTimeout, Config, I2c};
 use esp_hal::main;
-use esp_hal::time::{Rate};
-use gt911::{Gt911Blocking};
+use esp_hal::time::Rate;
+use gt911::Gt911Blocking;
 use log::info;
 
 #[panic_handler]
@@ -44,14 +44,15 @@ fn main() -> ! {
     info!("board is powering up");
     delay.delay_millis(1000);
 
-
     let mut i2c = I2c::new(
         peripherals.I2C0,
-        Config::default().with_frequency(Rate::from_khz(100)).with_timeout(BusTimeout::Disabled),
+        Config::default()
+            .with_frequency(Rate::from_khz(100))
+            .with_timeout(BusTimeout::Disabled),
     )
-        .unwrap()
-        .with_sda(peripherals.GPIO18)
-        .with_scl(peripherals.GPIO8);
+    .unwrap()
+    .with_sda(peripherals.GPIO18)
+    .with_scl(peripherals.GPIO8);
 
     let touch = Gt911Blocking::default();
     touch.init(&mut i2c).unwrap();
@@ -69,6 +70,4 @@ fn main() -> ! {
     //         // ignore because nothing has happened since last poll => Error::NotReady
     //     }
     // }
-
-
 }

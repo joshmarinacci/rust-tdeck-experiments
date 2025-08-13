@@ -38,16 +38,16 @@ use core::f32::consts::TAU;
 use core::time::Duration;
 use embassy_executor::Spawner;
 // use esp_backtrace as _;
+use esp_hal::clock::CpuClock;
+use esp_hal::delay::Delay;
+use esp_hal::gpio::Level::High;
+use esp_hal::gpio::{Output, OutputConfig};
 use esp_hal::{
     dma_buffers,
     i2s::master::{DataFormat, I2s, Standard},
     time::Rate,
     timer::timg::TimerGroup,
 };
-use esp_hal::clock::CpuClock;
-use esp_hal::delay::Delay;
-use esp_hal::gpio::Level::High;
-use esp_hal::gpio::{Output, OutputConfig};
 
 use log::{error, info};
 use micromath::F32Ext;
@@ -73,7 +73,7 @@ const SINE: [i16; 64] = [
 const TIMEOUT: Duration = Duration::from_millis(100);
 const SAMPLE_RATE_HZ: u32 = 44100;
 
-fn make_sawtooth(freq:f32, vol:f32) -> Vec<u8> {
+fn make_sawtooth(freq: f32, vol: f32) -> Vec<u8> {
     let buffer_size = (SAMPLE_RATE_HZ as f32 / freq) as usize;
     let mut buffer = vec![0; buffer_size * 4];
     let mut value: f32 = 0.0;
@@ -100,7 +100,7 @@ fn make_sawtooth(freq:f32, vol:f32) -> Vec<u8> {
     buffer
 }
 
-fn make_sawtooth_sample(freq:f32, vol:f32, i:usize) -> u16 {
+fn make_sawtooth_sample(freq: f32, vol: f32, i: usize) -> u16 {
     let buffer_size = (SAMPLE_RATE_HZ as f32 / freq) as usize;
     let mut value: f32 = 0.0;
     let mut value_inc = 0.1 / (buffer_size as f32);
@@ -123,7 +123,6 @@ async fn main(spawner: Spawner) {
     esp_alloc::heap_allocator!(size: 72 * 1024);
     info!("heap is {}", esp_alloc::HEAP.stats());
 
-
     let mut board_power = Output::new(peripherals.GPIO10, High, OutputConfig::default());
     board_power.set_high();
     let delay = Delay::new();
@@ -138,7 +137,8 @@ async fn main(spawner: Spawner) {
         DataFormat::Data16Channel16,
         Rate::from_hz(44100),
         dma_channel,
-    ).into_async();
+    )
+    .into_async();
 
     let i2s_tx = i2s
         .i2s_tx
@@ -168,15 +168,15 @@ async fn main(spawner: Spawner) {
 
     info!("Start");
     let mut transaction = i2s_tx.write_dma_circular_async(buffer).unwrap();
-    let freq = 120.0*2.0;
+    let freq = 120.0 * 2.0;
     const OMEGA_INC: f32 = TAU / SAMPLE_RATE_HZ as f32;
-    let mut omega:f32 = 0.0;
+    let mut omega: f32 = 0.0;
     let mut count = 0;
-    let mut vol:f32 = 0.1;
+    let mut vol: f32 = 0.1;
     loop {
         for i in (0..filler.len()).step_by(2) {
-            filler[i]   = data[(idx + i)   % data.len()];
-            filler[i+1] = data[(idx + i+1) % data.len()];
+            filler[i] = data[(idx + i) % data.len()];
+            filler[i + 1] = data[(idx + i + 1) % data.len()];
             // let sample = ((omega * freq).sin() * vol * (i16::MAX as f32)) as u16;
             // filler[i] = (sample & 0x00ff) as u8;
             // filler[i + 1] = ((sample & 0xff00) >> 8) as u8;

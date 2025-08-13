@@ -17,19 +17,17 @@ use esp_hal::{
     main,
     rng::Rng,
     time::{Duration, Instant},
-    timer::timg::TimerGroup
+    timer::timg::TimerGroup,
 };
-use esp_println::{println};
+use esp_println::println;
 use esp_wifi;
 use esp_wifi::wifi::{ClientConfiguration, Configuration};
 use log::info;
-
 
 use smoltcp::{
     iface::{SocketSet, SocketStorage},
     wire::{DhcpOption, IpAddress},
 };
-
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -39,7 +37,6 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
-
 
 const SSID: &str = "JEFF22G";
 const PASSWORD: &str = "Jefferson2022";
@@ -60,12 +57,11 @@ fn main() -> ! {
 
     info!("power is on");
 
-
     let mut rng = Rng::new(peripherals.RNG);
 
     // init the wifi chip
     let timg0 = TimerGroup::new(peripherals.TIMG0);
-    let esp_wifi_ctrl =  esp_wifi::init(timg0.timer0, rng.clone()).unwrap();
+    let esp_wifi_ctrl = esp_wifi::init(timg0.timer0, rng.clone()).unwrap();
 
     // access the wifi controller
     let (mut controller, interfaces) =
@@ -73,7 +69,6 @@ fn main() -> ! {
 
     let mut device = interfaces.sta;
     let iface = create_interface(&mut device);
-
 
     // configure DHCP
     let mut socket_set_entries: [SocketStorage; 3] = Default::default();
@@ -88,7 +83,6 @@ fn main() -> ! {
 
     info!("dhcp configured");
 
-
     let now = || Instant::now().duration_since_epoch().as_millis();
     let stack = Stack::new(iface, device, socket_set, now, rng.random());
 
@@ -96,7 +90,6 @@ fn main() -> ! {
     controller
         .set_power_saving(esp_wifi::config::PowerSaveMode::None)
         .unwrap();
-
 
     let client_config = Configuration::Client(ClientConfiguration {
         ssid: SSID.try_into().unwrap(),
@@ -146,9 +139,6 @@ fn main() -> ! {
     }
 
     println!("Start busy loop on main");
-
-
-
 
     // make a simple HTTP request
     let mut rx_buffer = [0u8; 1536];

@@ -1,6 +1,6 @@
 /*
- this doesn't work yet
- */
+this doesn't work yet
+*/
 #![no_std]
 #![no_main]
 #![deny(
@@ -11,18 +11,18 @@
 
 use alloc::string::String;
 use embedded_hal_bus::spi::ExclusiveDevice;
+use embedded_sdmmc::Mode::ReadOnly;
+use embedded_sdmmc::{Mode, SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager};
 use esp_hal::clock::CpuClock;
+use esp_hal::delay::Delay;
 use esp_hal::efuse::Efuse;
+use esp_hal::gpio::Level::{High, Low};
+use esp_hal::gpio::{Input, InputConfig, Output, OutputConfig, OutputPin, Pull};
+use esp_hal::spi::master::{Config as SpiConfig, Spi};
 use esp_hal::time::{Duration, Instant, Rate};
 use esp_hal::{chip, main};
-use log::info;
-use embedded_sdmmc::{SdCard, VolumeManager, Mode, VolumeIdx, TimeSource, Timestamp};
-use embedded_sdmmc::Mode::ReadOnly;
-use esp_hal::delay::Delay;
-use esp_hal::gpio::{Input, InputConfig, Output, OutputConfig, OutputPin, Pull};
-use esp_hal::gpio::Level::{High, Low};
-use esp_hal::spi::{ master::{Spi, Config as SpiConfig } };
 use esp_wifi::wifi::event::handle;
+use log::info;
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -65,10 +65,10 @@ fn main() -> ! {
     let BOARD_SDCARD_CS = peripherals.GPIO39;
     let RADIO_CS_PIN = peripherals.GPIO9;
     let BOARD_TFT_CS = peripherals.GPIO12;
-    let BOARD_SPI_MISO = peripherals.GPIO38;
+    let board_spi_miso = peripherals.GPIO38;
 
-    let BOARD_SPI_SCK = peripherals.GPIO40;
-    let BOARD_SPI_MOSI = peripherals.GPIO41;
+    let board_spi_sck = peripherals.GPIO40;
+    let board_spi_mosi = peripherals.GPIO41;
 
     info!("running");
     let mut delay = Delay::new();
@@ -82,19 +82,19 @@ fn main() -> ! {
     let radio_cs = Output::new(RADIO_CS_PIN, High, OutputConfig::default());
     let board_tft = Output::new(BOARD_TFT_CS, High, OutputConfig::default());
 
-    let board_spi_miso = Input::new(BOARD_SPI_MISO, InputConfig::default().with_pull(Pull::Up));
+    let board_spi_miso = Input::new(board_spi_miso, InputConfig::default().with_pull(Pull::Up));
 
-    let sdmmc_spi_bus = Spi::new(peripherals.SPI2,
-                                 SpiConfig::default()
-                                     .with_frequency(Rate::from_mhz(40))
-                                     // .with_mode()
-                                     // .with_clock_source(SpiClockSource::LSI)
-    ).unwrap()
-        .with_sck(BOARD_SPI_SCK)
-        .with_miso(board_spi_miso)
-        .with_mosi(BOARD_SPI_MOSI)
-        ;
-    let sdmmc_spi = ExclusiveDevice::new_no_delay(sdmmc_spi_bus, sdmmc_cs).expect("Failed to create SpiDevice");
+    let sdmmc_spi_bus = Spi::new(
+        peripherals.SPI2,
+        SpiConfig::default().with_frequency(Rate::from_mhz(40)), // .with_mode()
+                                                                 // .with_clock_source(SpiClockSource::LSI)
+    )
+    .unwrap()
+    .with_sck(board_spi_sck)
+    .with_miso(board_spi_miso)
+    .with_mosi(board_spi_mosi);
+    let sdmmc_spi =
+        ExclusiveDevice::new_no_delay(sdmmc_spi_bus, sdmmc_cs).expect("Failed to create SpiDevice");
     info!("open the card");
     let card = SdCard::new(sdmmc_spi, delay);
     info!("open the volume manager");
@@ -102,25 +102,27 @@ fn main() -> ! {
     info!("getting volume");
     match volume_mgr.open_volume(VolumeIdx(0)) {
         Ok(handle) => {
-            info!("opened the volume {:?}",handle);
+            info!("opened the volume {:?}", handle);
             let root_dir = handle.open_root_dir().unwrap();
-            root_dir.iterate_dir(|de|{
-                info!("dir entry {:?} is {} bytes",de.name, de.size);
-            }).unwrap();
+            root_dir
+                .iterate_dir(|de| {
+                    info!("dir entry {:?} is {} bytes", de.name, de.size);
+                })
+                .unwrap();
             let my_file = root_dir.open_file_in_dir("README.MD", ReadOnly).unwrap();
             while !my_file.is_eof() {
                 let mut buffer = [0u8; 32];
                 let num_read = my_file.read(&mut buffer).unwrap();
                 let slice = &buffer[0..num_read];
                 let line = String::from_utf8_lossy(slice);
-                info!("{}",line);
+                info!("{}", line);
             }
             my_file.close().unwrap();
             root_dir.close().unwrap();
             handle.close().unwrap();
         }
         Err(err) => {
-            info!("failed to open the volume {:?}",err);
+            info!("failed to open the volume {:?}", err);
         }
     }
     loop {
