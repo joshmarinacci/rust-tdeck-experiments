@@ -38,7 +38,7 @@ fn main() -> ! {
     delay.delay_millis(1000);
 
     // set up the trackball button pin
-    let tdeck_track_click = Input::new(
+    let tdeck_trackball_click = Input::new(
         peripherals.GPIO0,
         InputConfig::default().with_pull(Pull::Up),
     );
@@ -58,6 +58,7 @@ fn main() -> ! {
         peripherals.GPIO15,
         InputConfig::default().with_pull(Pull::Up),
     );
+    let mut last_click_high = false;
     let mut last_right_high = false;
     let mut last_left_high = false;
     let mut last_up_high = false;
@@ -66,6 +67,10 @@ fn main() -> ! {
     info!("running");
     loop {
         // info!("button pressed is {} ", tdeck_track_click.is_low());
+        if tdeck_trackball_click.is_high() != last_click_high {
+            info!("trackball click changed ");
+            last_click_high = tdeck_trackball_click.is_high();
+        }
         if tdeck_trackball_right.is_high() != last_right_high {
             info!("trackball right changed ");
             last_right_high = tdeck_trackball_right.is_high();

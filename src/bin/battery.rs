@@ -40,7 +40,7 @@ fn main() -> ! {
     loop {
         info!("getting the pin value");
         let pin_value: u16 = adc1.read_blocking(&mut pin);
-        info!("bat adc is {} ", pin_value);
+        info!("bat adc is {pin_value} ");
         delay.delay_millis(1500);
     }
 }

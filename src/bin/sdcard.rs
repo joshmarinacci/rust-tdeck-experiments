@@ -12,16 +12,14 @@ this doesn't work yet
 use alloc::string::String;
 use embedded_hal_bus::spi::ExclusiveDevice;
 use embedded_sdmmc::Mode::ReadOnly;
-use embedded_sdmmc::{Mode, SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager};
+use embedded_sdmmc::{SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager};
 use esp_hal::clock::CpuClock;
 use esp_hal::delay::Delay;
-use esp_hal::efuse::Efuse;
-use esp_hal::gpio::Level::{High, Low};
-use esp_hal::gpio::{Input, InputConfig, Output, OutputConfig, OutputPin, Pull};
+use esp_hal::gpio::Level::{High};
+use esp_hal::gpio::{Input, InputConfig, Output, OutputConfig, Pull};
 use esp_hal::spi::master::{Config as SpiConfig, Spi};
 use esp_hal::time::{Duration, Instant, Rate};
-use esp_hal::{chip, main};
-use esp_wifi::wifi::event::handle;
+use esp_hal::{main};
 use log::info;
 
 #[panic_handler]

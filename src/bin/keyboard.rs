@@ -58,7 +58,7 @@ fn main() -> ! {
                 }
             }
             Err(e) => {
-                info!("kb_res = {}", e);
+                info!("kb_res = {e}");
                 delay.delay_millis(1000);
             }
         }

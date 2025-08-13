@@ -99,9 +99,8 @@ fn main() -> ! {
     // wait for everything to boot up
     // delay.delay_millis(500);
     display.set_vertical_scroll_region(0, 0).unwrap();
-    let style = MonoTextStyle::new(&FONT_10X20, Rgb565::BLACK);
     let mut offset: u16 = 100;
-    while true {
+    loop {
         display.clear(Rgb565::WHITE).unwrap();
         // for i in 0..5 {
         //     Text::new("Hello Rust!", Point::new(20, i*30), style).draw(&mut display).unwrap();
