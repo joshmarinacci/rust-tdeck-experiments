@@ -46,38 +46,33 @@ fn main() -> ! {
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
 
-    esp_alloc::heap_allocator!(size: 72 * 1024);
+    esp_alloc::heap_allocator!(size: 128 * 1024);
 
     let mut delay = Delay::new();
 
+    let BOARD_POWERON = peripherals.GPIO10;
+
     // have to turn on the board and wait 500ms before using the keyboard
-    let mut board_power = Output::new(peripherals.GPIO10, High, OutputConfig::default());
+    let mut board_power = Output::new(BOARD_POWERON, High, OutputConfig::default());
     board_power.set_high();
     delay.delay_millis(1000);
 
     // ==== display setup ====
     // https://github.com/Xinyuan-LilyGO/T-Deck/blob/master/examples/HelloWorld/HelloWorld.ino
-
-    /*
-    // set TFT CS to high
-    let mut tft_cs = Output::new(peripherals.GPIO12, High, OutputConfig::default());
-    tft_cs.set_high();
-    let tft_miso = Input::new(
-        peripherals.GPIO38,
-        InputConfig::default().with_pull(Pull::Up),
-    );
-    let tft_sck = peripherals.GPIO40;
-    let tft_mosi = peripherals.GPIO41;
-    let tft_dc = Output::new(peripherals.GPIO11, Low, OutputConfig::default());
-    let mut tft_enable = Output::new(peripherals.GPIO42, High, OutputConfig::default());
-    tft_enable.set_high();
-    */
-
+    let BOARD_SDCARD_CS = peripherals.GPIO39;
+    let RADIO_CS_PIN = peripherals.GPIO9;
+    let BOARD_TFT_CS = peripherals.GPIO12;
     let board_spi_miso = peripherals.GPIO38;
+
     let board_spi_sck = peripherals.GPIO40;
     let board_spi_mosi = peripherals.GPIO41;
 
-    info!("creating spi device");
+    let sdmmc_cs = Output::new(BOARD_SDCARD_CS, High, OutputConfig::default());
+    let radio_cs = Output::new(RADIO_CS_PIN, High, OutputConfig::default());
+    let board_tft = Output::new(BOARD_TFT_CS, High, OutputConfig::default());
+
+    let board_spi_miso = Input::new(board_spi_miso, InputConfig::default().with_pull(Pull::Up));
+
     let sdmmc_spi_bus = Spi::new(
         peripherals.SPI2,
         SpiConfig::default().with_frequency(Rate::from_mhz(40)), // .with_mode()
@@ -87,51 +82,6 @@ fn main() -> ! {
         .with_sck(board_spi_sck)
         .with_miso(board_spi_miso)
         .with_mosi(board_spi_mosi);
-    // let sdmmc_spi_bus = Spi::new(
-    //     peripherals.SPI2,
-    //     SpiConfig::default().with_frequency(Rate::from_mhz(40)), // .with_mode(Mode::_0)
-    // )
-    //     .unwrap()
-    //     .with_sck(tft_sck)
-    //     .with_miso(tft_miso)
-    //     .with_mosi(tft_mosi);
-    let mut buffer = [0u8; 512];
-
-    info!("setting up the display");
-    let spi_delay = Delay::new();
-    // let spi_device = ExclusiveDevice::new(sdmmc_spi_bus, tft_cs, spi_delay).unwrap();
-    // let di = SpiInterface::new(spi_device, tft_dc, &mut buffer);
-    // info!("building");
-    // let mut display = Builder::new(ST7789, di)
-    //     // .reset_pin(tft_enable)
-    //     .display_size(240, 320)
-    //     .invert_colors(ColorInversion::Inverted)
-    //     .color_order(ColorOrder::Rgb)
-    //     .orientation(Orientation::new().rotate(Rotation::Deg90))
-    //     // .display_size(320,240)
-    //     .init(&mut delay)
-    //     .unwrap();
-
-    info!("setting up the SD card");
-    // let BOARD_POWERON = peripherals.GPIO10;
-    let BOARD_SDCARD_CS = peripherals.GPIO39;
-    // let RADIO_CS_PIN = peripherals.GPIO9;
-    // let BOARD_TFT_CS = peripherals.GPIO12;
-
-    let sdmmc_cs = Output::new(BOARD_SDCARD_CS, High, OutputConfig::default());
-    // let radio_cs = Output::new(RADIO_CS_PIN, High, OutputConfig::default());
-    // let board_tft = Output::new(BOARD_TFT_CS, High, OutputConfig::default());
-
-    // let board_spi_miso = Input::new(board_spi_miso, InputConfig::default().with_pull(Pull::Up));
-    // let sdmmc_spi_bus = Spi::new(
-    //     peripherals.SPI1,
-    //     SpiConfig::default().with_frequency(Rate::from_mhz(40)), // .with_mode()
-    //     // .with_clock_source(SpiClockSource::LSI)
-    // )
-    //     .unwrap()
-    //     .with_sck(board_spi_sck)
-    //     .with_miso(board_spi_miso)
-    //     .with_mosi(board_spi_mosi);
     let sdmmc_spi =
         ExclusiveDevice::new_no_delay(sdmmc_spi_bus, sdmmc_cs).expect("Failed to create SpiDevice");
     info!("open the card");
@@ -154,7 +104,7 @@ fn main() -> ! {
 }
 
 struct ExampleDisplay {
-    framebuffer: [u8; 64*64],
+    framebuffer: [u8; 20*20*3],
 }
 
 impl OriginDimensions for ExampleDisplay {
@@ -181,16 +131,17 @@ impl DrawTarget for ExampleDisplay {
     }
 }
 fn draw_to_buffer(volume_mgr: &mut VolumeManager<SdCard<ExclusiveDevice<Spi<Blocking>, Output, NoDelay>, Delay>, DummyTimesource>) {
-    const WIDTH:usize = 64;
-    const HEIGHT:usize = 64;
+    const WIDTH:usize = 20;
+    const HEIGHT:usize = 20;
     let mut buffer = ExampleDisplay {
-        framebuffer: [0; WIDTH*HEIGHT]
+        framebuffer: [0; WIDTH*HEIGHT*3]
     };
-    Rectangle::new(Point::new(10,10), Size::new(20,20))
+    Rectangle::new(Point::new(0,0), Size::new(10,10))
         .into_styled(PrimitiveStyle::with_fill(Rgb565::MAGENTA))
         .draw(&mut buffer).unwrap();
     info!("the first few pixels are {:?}", &buffer.framebuffer[0 .. 10]);
 
+    info!("Making a bmp");
     // --- BMP Encoding and Writing ---
     // You would typically use `tinybmp` to encode your raw pixel data into BMP format
     // This is a simplified example, you'll need to adapt it.
@@ -201,35 +152,45 @@ fn draw_to_buffer(volume_mgr: &mut VolumeManager<SdCard<ExclusiveDevice<Spi<Bloc
         // This is where you'd use tinybmp::Bmp::from_pixel_data() or similar
         // For now, let's just make a dummy header and data for demonstration
         let mut dummy_bmp_data = [0u8; 54 + (WIDTH * HEIGHT * 3) as usize]; // Simple BMP header + pixel data
+        info!("allocated bmp data");
         // Fill in BMP header (this is highly simplified and incomplete!)
         dummy_bmp_data[0] = b'B';
         dummy_bmp_data[1] = b'M';
         // ... fill other header fields with appropriate values ...
         dummy_bmp_data[10] = 54; // Data offset
         dummy_bmp_data[14] = 40; // Header size
+        info!("copying width");
         dummy_bmp_data[18..22].copy_from_slice(&WIDTH.to_le_bytes());
+        info!("copying height");
         dummy_bmp_data[22..26].copy_from_slice(&HEIGHT.to_le_bytes());
         dummy_bmp_data[26] = 1; // Planes
         dummy_bmp_data[28] = 24; // Bits per pixel (RGB888)
 
+        info!("copying rest of the bytes");
         dummy_bmp_data[54..].copy_from_slice(&buffer.framebuffer); // Copy pixel data after header
 
+        info!("turning into a vec");
         dummy_bmp_data.to_vec() // Convert to Vec<u8> (requires alloc feature)
         // Or use a fixed-size buffer if alloc is not available
     };
 
+    info!("prepared a bmp file");// {:?}", bmp_bytes);
 
 
+    info!("opening volume");
     let vol = volume_mgr.open_volume(VolumeIdx(0)).unwrap();
+    info!("opening root dir");
     let root = vol.open_root_dir().unwrap();
     let file = root.open_file_in_dir("IMAGE.BMP",ReadWriteCreateOrTruncate).unwrap();
     match file.write(&bmp_bytes) {
         Ok(_) => {
+            info!("wrote out IMAGE.BMP");
             // Success!
             // You might want to flush the file here, embedded-sdmmc handles flushing on close.
             file.close().unwrap();
         },
         Err(e) => {
+            info!("error writing image {:?}",e);
             // Handle write error
             // log::error!("Failed to write BMP data: {:?}", e);
         }
