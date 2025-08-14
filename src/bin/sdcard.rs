@@ -104,12 +104,15 @@ fn main() -> ! {
         Ok(volume) => {
             info!("opened the volume {:?}", volume);
             let root_dir = volume.open_root_dir().unwrap();
+            info!("root dir is {:?}",root_dir);
             root_dir
                 .iterate_dir(|de| {
                     info!("dir entry {:?} is {} bytes", de.name, de.size);
                 })
                 .unwrap();
+            info!("reading the file README.MD");
             let my_file = root_dir.open_file_in_dir("README.MD", ReadOnly).unwrap();
+            // read 32 bytes at a time until the file ends
             while !my_file.is_eof() {
                 let mut buffer = [0u8; 32];
                 let num_read = my_file.read(&mut buffer).unwrap();
