@@ -95,13 +95,15 @@ fn main() -> ! {
         ExclusiveDevice::new_no_delay(sdmmc_spi_bus, sdmmc_cs).expect("Failed to create SpiDevice");
     info!("open the card");
     let card = SdCard::new(sdmmc_spi, delay);
+    info!("bytes is {:?}",card.num_bytes());
+    info!("card type is {:?}",card.get_card_type());
     info!("open the volume manager");
     let mut volume_mgr = VolumeManager::new(card, DummyTimesource {});
     info!("getting volume");
     match volume_mgr.open_volume(VolumeIdx(0)) {
-        Ok(handle) => {
-            info!("opened the volume {:?}", handle);
-            let root_dir = handle.open_root_dir().unwrap();
+        Ok(volume) => {
+            info!("opened the volume {:?}", volume);
+            let root_dir = volume.open_root_dir().unwrap();
             root_dir
                 .iterate_dir(|de| {
                     info!("dir entry {:?} is {} bytes", de.name, de.size);
@@ -117,7 +119,7 @@ fn main() -> ! {
             }
             my_file.close().unwrap();
             root_dir.close().unwrap();
-            handle.close().unwrap();
+            volume.close().unwrap();
         }
         Err(err) => {
             info!("failed to open the volume {:?}", err);
