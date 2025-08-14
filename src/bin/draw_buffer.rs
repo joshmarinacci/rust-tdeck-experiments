@@ -92,9 +92,8 @@ fn main() -> ! {
 
     let mut volume_mgr = VolumeManager::new(card, DummyTimesource{}); // Use your TimeSource
 
+    info!("drawing to buffer");
     draw_to_buffer(&mut volume_mgr);
-
-    info!("Display initialized");
 
     loop {
         info!("sleeping");
@@ -109,7 +108,7 @@ struct ExampleDisplay {
 
 impl OriginDimensions for ExampleDisplay {
     fn size(&self) -> Size {
-        Size::new(64,64)
+        Size::new(20,20)
     }
 }
 impl DrawTarget for ExampleDisplay {
@@ -121,11 +120,14 @@ impl DrawTarget for ExampleDisplay {
         I: IntoIterator<Item=Pixel<Self::Color>>
     {
         for Pixel(coord, color) in pixels.into_iter() {
-            if let Ok((x @ 0..=63, y @ 0..=63)) = coord.try_into() {
-                // Calculate the index in the framebuffer.
-                let index: u32 = x + y * 64;
-                self.framebuffer[index as usize] = color.r();
-            }
+            let width = self.size().width;
+            let height = self.size().height;
+            let x = coord.x as u32;
+            let y = coord.y as u32;
+            let index: u32 = (x + y * width)*3;
+            self.framebuffer[(index+0) as usize] = color.r()<<3;
+            self.framebuffer[(index+1) as usize] = color.g()<<2;
+            self.framebuffer[(index+2) as usize] = color.b()<<3;
         }
         Ok(())
     }
