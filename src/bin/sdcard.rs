@@ -95,11 +95,11 @@ fn main() -> ! {
         ExclusiveDevice::new_no_delay(sdmmc_spi_bus, sdmmc_cs).expect("Failed to create SpiDevice");
     info!("open the card");
     let card = SdCard::new(sdmmc_spi, delay);
-    info!("bytes is {:?}",card.num_bytes());
-    info!("card type is {:?}",card.get_card_type());
-    info!("open the volume manager");
+    info!("size of card in bytes: {}",card.num_bytes().unwrap());
+    info!("type of card: {:?}",card.get_card_type());
+    info!("opening the volume manager");
     let mut volume_mgr = VolumeManager::new(card, DummyTimesource {});
-    info!("getting volume");
+    info!("getting volume 0");
     match volume_mgr.open_volume(VolumeIdx(0)) {
         Ok(volume) => {
             info!("opened the volume {:?}", volume);
