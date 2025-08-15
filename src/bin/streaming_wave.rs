@@ -42,7 +42,8 @@ esp_bootloader_esp_idf::esp_app_desc!();
 extern crate alloc;
 
 // ---------- Config ----------
-const CHUNK_BYTES: usize = 8192; // increase if you get underruns
+// const CHUNK_BYTES: usize = 8192; // increase if you get underruns
+const CHUNK_BYTES: usize = 32000; // increase if you get underruns
 const WAV_HEADER_LEN: usize = 44;
 
 // T-Deck pins
@@ -198,7 +199,7 @@ fn main() -> ! {
 
     let mut board_power = Output::new(BOARD_POWERON, High, OutputConfig::default());
     board_power.set_high();
-    delay.delay_millis(3000);
+    delay.delay_millis(1000);
 
     info!("setting up SPI");
 
@@ -239,7 +240,7 @@ fn main() -> ! {
 
     // Open your WAV file (8.3 name unless you enable long names)
     let mut file = root_dir.open_file_in_dir(
-        "QUACK.WAV", // "TEST.WAV" as 8.3 (pad with spaces)
+        "U2MYST.WAV", // "TEST.WAV" as 8.3 (pad with spaces)
         embedded_sdmmc::Mode::ReadOnly,
     ).unwrap();
 
@@ -257,7 +258,7 @@ fn main() -> ! {
     info!("wav {:?}",wav);
 
 
-    let (_, _, tx_buffer, tx_descriptors) = dma_buffers!(0, CHUNK_BYTES);
+    let (_, _, tx_buffer, tx_descriptors) = dma_buffers!(0, CHUNK_BYTES*4);
 
     // --- I2S0 TX to built-in speaker pins ---
     let bclk = peripherals.GPIO7;
@@ -274,110 +275,32 @@ fn main() -> ! {
     // let tx_pins = PinsBclkWsDout::new(bclk, ws, dout);
 
 
-    loop {
         // let (a, b) = (&mut DMA_BUF_A.0, &mut DMA_BUF_B.0);
-        let mut a = [0u32; 1024];
-        // let mut a:[u32]  = [_;1024];
-        let a_len = fill_frames_from_sd(&mut file, &mut a, &wav);
-        let result = i2s_tx.write_dma(&a);
-        match result {
-            Ok(dma_wait) => {
-                // info!("did dma okay");
-                dma_wait.wait().unwrap();
-                // info!("transfer complete");
+    let mut a = [0u32; CHUNK_BYTES/4];
+    let mut filler = [0u8; CHUNK_BYTES];
+    let len = fill_frames_from_sd(&mut file, &mut a, &wav);
+    info!("read len {}",len);
+    info!("size of filler = {}", filler.len());
+    info!("tx buffer is {}", tx_buffer.len());
+    info!("CHUNK_BYTES is {}", CHUNK_BYTES);
+    let mut transaction = i2s_tx.write_dma_circular(&tx_buffer).unwrap();
+    loop {
+        let avail = transaction.available().unwrap();
+        if avail > CHUNK_BYTES {
+            for (dest_c, source_e) in filler.chunks_exact_mut(4).zip(a.iter()) {
+                dest_c.copy_from_slice(&source_e.to_le_bytes())
             }
-            Err(e) => {
-                error!("DMA error {:?}",e)
+            match transaction.push(&filler) {
+                Ok(written) => {
+                    info!("wrote {}",written);
+                }
+                Err(e) => {
+                    error!("{:?}",e);
+                }
             }
+            delay.delay_millis(1);
+            let len = fill_frames_from_sd(&mut file, &mut a, &wav);
         }
+        delay.delay_millis(1);
     }
-
-    // Queue to record which buffer was just submitted
-    // let (mut prod, mut cons) = unsafe {
-    //     let q = Q_STORAGE.write(Queue::new());
-    //     q.split()
-    // };
-
-    // unsafe {
-    //     let (a, b) = (&mut DMA_BUF_A.0, &mut DMA_BUF_B.0);
-    //
-    //     Preload both buffers
-        // let b_len = fill_frames_from_sd(&mut file, b, &wav);
-        // if a_len == 0 {
-        //     loop {} // empty file
-        // }
-
-        // Kick off DMA with buffer A
-        // prod.enqueue(0).ok();
-
-        // let mut next_is_a = false; // after A, we'll submit B, etc.
-        //
-        // loop {
-        //     // Wait until TX channel is idle (previous DMA buffer has finished)
-        //     if i2s_tx.is_tx_idle() {
-        //         // Refill the buffer we just finished (the opposite of what we submit next)
-        //         if next_is_a {
-        //             // we're about to submit A; refill B
-        //             let b_filled = fill_frames_from_sd(&mut file, b, &wav);
-        //             // If EOF, you can break or loop by seeking to start again
-        //             let submit_len = if a_len == 0 { 0 } else { a_len };
-        //             if submit_len == 0 { break; }
-        //             i2s_tx.write_dma(&a[..submit_len]).unwrap();
-        //             prod.enqueue(0).ok();
-        //         } else {
-        //             // we're about to submit B; refill A
-        //             let a_filled = fill_frames_from_sd(&mut file, a, &wav);
-        //             let submit_len = if b_len == 0 { 0 } else { b_len };
-        //             if submit_len == 0 { break; }
-        //             i2s_tx.write_dma(&b[..submit_len]).unwrap();
-        //             prod.enqueue(1).ok();
-        //         }
-        //         next_is_a = !next_is_a;
-        //     }
-        // }
-    // }
-
-    loop {}
 }
-
-// ---- SDSPI glue stub ----
-// Replace with your existing SDSPI driver that implements BlockDevice.
-// Any driver that can satisfy embedded_sdmmc::BlockDevice (read-only) will work.
-// mod sdspi {
-//     use embedded_sdmmc::{Block, BlockCount, BlockDevice, BlockIdx, Error as SdError, SdCardError};
-//
-//     pub struct SdSpiDev<SPI> {
-//         spi: SPI,
-//         // Add CS pin control + delays + card init state here
-//     }
-//     impl<SPI> SdSpiDev<SPI> {
-//         pub fn new(spi: SPI) -> Self { Self { spi } }
-//     }
-//
-//     impl<SPI> BlockDevice for SdSpiDev<SPI>
-//     where
-//         SPI: SpiBus<u8>,
-//     {
-//         type Error = SdError<SdCardError>;
-//
-//         fn read(&mut self, _blocks: &mut [Block], _start_block: BlockIdx, _reason: &str)
-//                 -> Result<(), Self::Error>
-//         {
-//             // TODO: implement CMD17/CMD18 single/multi-block reads in SPI mode
-//             // Or swap this module with an existing SDSPI BlockDevice crate.
-//             unimplemented!()
-//         }
-//
-//         fn write(&mut self, _blocks: &[Block], _start_block: BlockIdx)
-//                  -> Result<(), Self::Error>
-//         {
-//             // Not needed for playback; can be left unimplemented for read-only
-//             unimplemented!()
-//         }
-//
-//         fn num_blocks(&mut self) -> Result<BlockCount, Self::Error> {
-//             // Optional: return card size if your driver tracks it
-//             Err(SdError::DeviceError(SdCardError::GenericError))
-//         }
-//     }
-// }

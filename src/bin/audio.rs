@@ -119,6 +119,7 @@ fn main() -> ! {
             filler[i] = data[(idx + i) % data.len()];
         }
         info!("Next");
+        info!("can push {:?}", transaction.available());
 
         let written = transaction.push(&filler).unwrap();
         idx = (idx + written) % data.len();
