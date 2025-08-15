@@ -1347,6 +1347,7 @@ name = "rust-tdeck-experiments"
 version = "0.1.0"
 dependencies = [
  "blocking-network-stack",
+ "byteorder",
  "embassy-executor",
  "embedded-graphics",
  "embedded-hal-bus",
@@ -1361,6 +1362,7 @@ dependencies = [
  "esp-storage",
  "esp-wifi",
  "gt911",
+ "heapless",
  "log",
  "micromath",
  "mipidsi",

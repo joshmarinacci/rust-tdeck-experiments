@@ -27,6 +27,8 @@ embassy-executor = {  version = "0.7.0", features = ["log", "task-arena-size-655
 micromath = "2.1.0"
 esp-storage = {  version="0.7.0", features = ["esp32s3"] }
 embedded-storage = "0.3.1"
+byteorder = {  version = "1.5.0", default-features = false }
+heapless = "0.8.0"
 
 [profile.dev]
 # Rust debug is too slow.
