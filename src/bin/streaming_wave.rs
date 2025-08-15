@@ -20,10 +20,11 @@ use esp_hal::{main};
 use esp_hal::clock::CpuClock;
 use esp_hal::delay::Delay;
 use esp_hal::gpio::Level::High;
-use esp_hal::gpio::{Output, OutputConfig};
+use esp_hal::gpio::{Input, InputConfig, Output, OutputConfig, Pull};
 use esp_hal::i2s::master::Standard;
 use esp_hal::time::Rate;
 use esp_hal::spi::master::{Config as SpiConfig, Spi};
+use esp_hal::timer::timg::TimerGroup;
 use heapless::spsc::Queue;
 // use panic_halt as _;
 use log::{error, info};
@@ -63,7 +64,7 @@ static mut DMA_BUF_B: Aligned<[u32; CHUNK_BYTES / 4]> = Aligned([0; CHUNK_BYTES 
 static mut Q_STORAGE: MaybeUninit<Queue<u8, 4>> = MaybeUninit::uninit();
 
 // ---------- WAV info ----------
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct WavInfo {
     audio_format: u16,   // 1 = PCM
     num_channels: u16,   // 1 or 2
@@ -178,46 +179,56 @@ impl embedded_sdmmc::TimeSource for DummyTime {
 // ----------------- MAIN -----------------
 #[main]
 fn main() -> ! {
+
     esp_println::logger::init_logger_from_env();
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
+    let timer_g1 = TimerGroup::new(peripherals.TIMG1);
+    esp_hal_embassy::init(timer_g1.timer0);
     esp_alloc::heap_allocator!(size: 72 * 1024);
+    let delay = Delay::new();
 
-    // let p = Peripherals::take();
-    // let system = p.SYSTEM.split();
-    // let clocks = ClockControl::max(system.clock_control).freeze();
-    // let _tg0 = TimerGroup::new(p.TIMG0, &clocks);
+    info!("powering on");
 
-    // let io = Io::new(p.GPIO, p.IO_MUX);
-    let mut delay = Delay::new();
+    let BOARD_POWERON = peripherals.GPIO10;
+    let BOARD_SDCARD_CS = peripherals.GPIO39;
+
+    let mut board_power = Output::new(BOARD_POWERON, High, OutputConfig::default());
+    board_power.set_high();
+    delay.delay_millis(3000);
+
+    info!("setting up SPI");
 
     // --- SPI2 for SD card (T-Deck pins) ---
-    let BOARD_SDCARD_CS = peripherals.GPIO39;
-    let sck  = peripherals.GPIO40;
-    let mosi = peripherals.GPIO41;
-    let miso = peripherals.GPIO38;
+    let BOARD_SPI_SCK = peripherals.GPIO40;
+    let BOARD_SPI_MOSI = peripherals.GPIO41;
+    let BOARD_SPI_MISO = peripherals.GPIO38;
+    let RADIO_CS_PIN = peripherals.GPIO9;
+    let BOARD_TFT_CS = peripherals.GPIO12;
     // let cs   = peripherals.gpio41;
     let sdmmc_cs = Output::new(BOARD_SDCARD_CS, High, OutputConfig::default());
+    let BOARD_SPI_MISO = Input::new(BOARD_SPI_MISO, InputConfig::default().with_pull(Pull::Up));
+    // I don't know why we need these set, but we do.
+    let radio_cs = Output::new(RADIO_CS_PIN, High, OutputConfig::default());
+    let board_tft = Output::new(BOARD_TFT_CS, High, OutputConfig::default());
 
-    let spi = Spi::new(peripherals.SPI2,
-                       SpiConfig::default().with_frequency(Rate::from_mhz(40)), // .with_mode()
+    let sdmmc_spi_bus = Spi::new(peripherals.SPI2,
+                                 SpiConfig::default().with_frequency(Rate::from_mhz(40)),
     ).unwrap()
-        .with_sck(sck)
-        .with_mosi(mosi)
-        .with_miso(miso);
-        // .with_cs(cs);
-                       // SpiMode::Mode0, &clocks)
-        // .with_pins(sck, mosi, miso, cs);
+        .with_sck(BOARD_SPI_SCK)
+        .with_mosi(BOARD_SPI_MOSI)
+        .with_miso(BOARD_SPI_MISO);
+    let sdmmc_spi =
+        ExclusiveDevice::new_no_delay(sdmmc_spi_bus, sdmmc_cs).expect("Failed to create SpiDevice");
 
-    // --- Create an SDSPI BlockDevice and embedded-sdmmc Controller ---
-    // Plug in your BlockDevice implementation here:
-    // let sddev = sdspi::SdSpiDev::new(spi); // <--- implement / import this (read-only is enough)
-    let sddev =
-        ExclusiveDevice::new_no_delay(spi, sdmmc_cs).expect("Failed to create SpiDevice");
 
-    let mut ctrl = SdCard::new(sddev, delay);
+    info!("setting up SD CARD");
+
+    let card = SdCard::new(sdmmc_spi, delay);
+    info!("size of card in bytes: {}",card.num_bytes().unwrap());
+    info!("type of card: {:?}",card.get_card_type());
     info!("opening volume manager");
-    let mut volume_mgr = VolumeManager::new(ctrl,DummyTime{});
+    let mut volume_mgr = VolumeManager::new(card, DummyTime{});
     info!("opening volume");
     let mut volume = volume_mgr.open_volume(VolumeIdx(0)).unwrap();
     info!("opening root dir");
@@ -225,19 +236,22 @@ fn main() -> ! {
 
     // Open your WAV file (8.3 name unless you enable long names)
     let mut file = root_dir.open_file_in_dir(
-        "TEST.WAV", // "TEST.WAV" as 8.3 (pad with spaces)
+        "QUACK.WAV", // "TEST.WAV" as 8.3 (pad with spaces)
         embedded_sdmmc::Mode::ReadOnly,
     ).unwrap();
 
+    info!("opened the file {:?}",file);
+
     // Read and parse header
     let mut hdr = [0u8; WAV_HEADER_LEN];
-    // ctrl.read(&mut volume, &mut file, &mut hdr).unwrap();
+    file.read(&mut hdr).unwrap();
     let wav = parse_wav_header(&hdr).expect("Unsupported WAV header");
     assert_eq!(wav.audio_format, 1);
     assert_eq!(wav.bits_per_sample, 16);
     assert!(wav.num_channels == 1 || wav.num_channels == 2);
 
     info!("read the wave file");
+    info!("wav {:?}",wav);
     // // --- I2S0 TX to built-in speaker pins ---
     // let bclk = io.pins.gpio42;
     // let ws   = io.pins.gpio1;
