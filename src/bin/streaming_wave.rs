@@ -2,8 +2,8 @@
 #![no_main]
 
 use core::mem::MaybeUninit;
-use embedded_hal_bus::spi::ExclusiveDevice;
-use embedded_sdmmc::{SdCard, Timestamp, VolumeIdx, VolumeManager};
+use embedded_hal_bus::spi::{ExclusiveDevice, NoDelay};
+use embedded_sdmmc::{BlockDevice, File, SdCard, Timestamp, VolumeIdx, VolumeManager};
 // use critical_section as cs;
 // use esp_hal::{
     // clock::ClockControl,
@@ -16,12 +16,13 @@ use embedded_sdmmc::{SdCard, Timestamp, VolumeIdx, VolumeManager};
     // spi::{Spi, SpiMode},
     // timer::TimerGroup,
 // };
-use esp_hal::{main};
+use esp_hal::{dma_buffers, main, Blocking};
 use esp_hal::clock::CpuClock;
 use esp_hal::delay::Delay;
+use esp_hal::dma::DmaTransferTx;
 use esp_hal::gpio::Level::High;
 use esp_hal::gpio::{Input, InputConfig, Output, OutputConfig, Pull};
-use esp_hal::i2s::master::Standard;
+use esp_hal::i2s::master::{DataFormat, Error, I2s, I2sTx, Standard};
 use esp_hal::time::Rate;
 use esp_hal::spi::master::{Config as SpiConfig, Spi};
 use esp_hal::timer::timg::TimerGroup;
@@ -117,48 +118,50 @@ fn parse_wav_header(h: &[u8]) -> Option<WavInfo> {
 }
 
 // Read PCM bytes from SD and pack to u32 I2S frames (L: high 16, R: low 16)
-// fn fill_frames_from_sd<DEV: embedded_sdmmc::BlockDevice>(
-//     ctrl: &mut embedded_sdmmc::Controller<DEV, DummyTime>,
-//     vol: &mut embedded_sdmmc::Volume,
-//     file: &mut embedded_sdmmc::File,
-//     out_frames: &mut [u32],
-//     w: &WavInfo,
-// ) -> usize {
-//     // Temp byte buffer: size in bytes equals out_frames*4 (16b stereo = 4 bytes per frame)
-//     let mut tmp = [0u8; CHUNK_BYTES];
-//
-//     let bytes_per_sample = (w.bits_per_sample / 8) as usize; // 2
-//     let ch = w.num_channels as usize; // 1 or 2
-//
-//     // Compute how many PCM bytes we'd like to fill
-//     let want_frames = out_frames.len();
-//     let want_pcm_bytes = want_frames * bytes_per_sample * ch;
-//     let to_read = core::cmp::min(tmp.len(), want_pcm_bytes);
-//
-//     let n = ctrl.read(vol, file, &mut tmp[..to_read]).unwrap_or(0);
-//     if n == 0 { return 0; }
-//
-//     let mut produced = 0usize;
-//     let mut i = 0usize;
-//     while i + bytes_per_sample * ch <= n && produced < out_frames.len() {
-//         // 16-bit little-endian
-//         let l = i16::from_le_bytes([tmp[i], tmp[i+1]]) as i32;
-//         let r = if ch == 2 {
-//             let j = i + 2;
-//             i16::from_le_bytes([tmp[j], tmp[j+1]]) as i32
-//         } else {
-//             l
-//         };
-//         let lu = (l as u32) & 0xFFFF;
-//         let ru = (r as u32) & 0xFFFF;
-//
-//         out_frames[produced] = (lu << 16) | ru;
-//         produced += 1;
-//         i += bytes_per_sample * ch; // advance by one sample frame in input
-//     }
-//
-//     produced
-// }
+fn fill_frames_from_sd(
+    file: &mut File<SdCard<ExclusiveDevice<Spi<Blocking>, Output, NoDelay>, Delay>, DummyTime, 4,4,1>,
+    out_frames: &mut [u32],
+    w: &WavInfo,
+) -> usize {
+    // Temp byte buffer: size in bytes equals out_frames*4 (16b stereo = 4 bytes per frame)
+    let mut tmp = [0u8; CHUNK_BYTES];
+
+    let bytes_per_sample = (w.bits_per_sample / 8) as usize; // 2
+    let ch = w.num_channels as usize; // 1 or 2
+
+    // Compute how many PCM bytes we'd like to fill
+    let want_frames = out_frames.len();
+    let want_pcm_bytes = want_frames * bytes_per_sample * ch;
+    let to_read = core::cmp::min(tmp.len(), want_pcm_bytes);
+
+    if file.is_eof() {
+        // info!("end of file");
+        file.seek_from_start(WAV_HEADER_LEN as u32).unwrap();
+    }
+    let n = file.read(&mut tmp[..to_read]).unwrap_or(0);
+    if n == 0 { return 0; }
+
+    let mut produced = 0usize;
+    let mut i = 0usize;
+    while i + bytes_per_sample * ch <= n && produced < out_frames.len() {
+        // 16-bit little-endian
+        let l = i16::from_le_bytes([tmp[i], tmp[i+1]]) as i32;
+        let r = if ch == 2 {
+            let j = i + 2;
+            i16::from_le_bytes([tmp[j], tmp[j+1]]) as i32
+        } else {
+            l
+        };
+        let lu = (l as u32) & 0xFFFF;
+        let ru = (r as u32) & 0xFFFF;
+
+        out_frames[produced] = (lu << 16) | ru;
+        produced += 1;
+        i += bytes_per_sample * ch; // advance by one sample frame in input
+    }
+
+    produced
+}
 
 // Dummy time source required by embedded-sdmmc
 #[derive(Default)]
@@ -252,74 +255,86 @@ fn main() -> ! {
 
     info!("read the wave file");
     info!("wav {:?}",wav);
-    // // --- I2S0 TX to built-in speaker pins ---
-    // let bclk = io.pins.gpio42;
-    // let ws   = io.pins.gpio1;
-    // let dout = io.pins.gpio2;
-    //
-    // let i2s = I2s::new(p.I2S0, &clocks);
+
+
+    let (_, _, tx_buffer, tx_descriptors) = dma_buffers!(0, CHUNK_BYTES);
+
+    // --- I2S0 TX to built-in speaker pins ---
+    let bclk = peripherals.GPIO7;
+    let ws   = peripherals.GPIO5;
+    let dout = peripherals.GPIO6;
+
+    let i2s = I2s::new(peripherals.I2S0,
+                       Standard::Philips,
+                       DataFormat::Data16Channel16,
+                       Rate::from_hz(44100),
+                       peripherals.DMA_CH0,
+                       );
+    let mut i2s_tx = i2s.i2s_tx.with_bclk(bclk).with_ws(ws).with_dout(dout).build(tx_descriptors);
     // let tx_pins = PinsBclkWsDout::new(bclk, ws, dout);
-    //
-    // let dma = Dma::new(p.DMA);
-    // let dma_ch = dma.channel0;
-    //
-    // let mut tx: I2sTx<_> = i2s
-    //     .tx_channel(
-    //         dma_ch,
-    //         tx_pins,
-    //         Standard::Philips,
-    //         I2sChannel::Stereo,
-    //         I2sDataFmt::Data16Channel16,
-    //         wav.sample_rate.Hz(),
-    //         DmaPriority::Priority0,
-    //     )
-    //     .unwrap();
-    //
+
+
+    loop {
+        // let (a, b) = (&mut DMA_BUF_A.0, &mut DMA_BUF_B.0);
+        let mut a = [0u32; 1024];
+        // let mut a:[u32]  = [_;1024];
+        let a_len = fill_frames_from_sd(&mut file, &mut a, &wav);
+        let result = i2s_tx.write_dma(&a);
+        match result {
+            Ok(dma_wait) => {
+                // info!("did dma okay");
+                dma_wait.wait().unwrap();
+                // info!("transfer complete");
+            }
+            Err(e) => {
+                error!("DMA error {:?}",e)
+            }
+        }
+    }
+
     // Queue to record which buffer was just submitted
-    let (mut prod, mut cons) = unsafe {
-        let q = Q_STORAGE.write(Queue::new());
-        q.split()
-    };
+    // let (mut prod, mut cons) = unsafe {
+    //     let q = Q_STORAGE.write(Queue::new());
+    //     q.split()
+    // };
 
     // unsafe {
     //     let (a, b) = (&mut DMA_BUF_A.0, &mut DMA_BUF_B.0);
     //
-    //     // Preload both buffers
-    //     let a_len = fill_frames_from_sd(&mut ctrl, &mut volume, &mut file, a, &wav);
-    //     let b_len = fill_frames_from_sd(&mut ctrl, &mut volume, &mut file, b, &wav);
-    //     if a_len == 0 {
-    //         loop {} // empty file
-    //     }
-    //
-    //     // Kick off DMA with buffer A
-    //     tx.write_dma(&a[..a_len]).unwrap();
-    //     prod.enqueue(0).ok();
-    //
-    //     let mut next_is_a = false; // after A, we'll submit B, etc.
-    //
-    //     loop {
-    //         // Wait until TX channel is idle (previous DMA buffer has finished)
-    //         if tx.is_tx_idle() {
-    //             // Refill the buffer we just finished (the opposite of what we submit next)
-    //             if next_is_a {
-    //                 // we're about to submit A; refill B
-    //                 let b_filled = fill_frames_from_sd(&mut ctrl, &mut volume, &mut file, b, &wav);
-    //                 // If EOF, you can break or loop by seeking to start again
-    //                 let submit_len = if a_len == 0 { 0 } else { a_len };
-    //                 if submit_len == 0 { break; }
-    //                 tx.write_dma(&a[..submit_len]).unwrap();
-    //                 prod.enqueue(0).ok();
-    //             } else {
-    //                 // we're about to submit B; refill A
-    //                 let a_filled = fill_frames_from_sd(&mut ctrl, &mut volume, &mut file, a, &wav);
-    //                 let submit_len = if b_len == 0 { 0 } else { b_len };
-    //                 if submit_len == 0 { break; }
-    //                 tx.write_dma(&b[..submit_len]).unwrap();
-    //                 prod.enqueue(1).ok();
-    //             }
-    //             next_is_a = !next_is_a;
-    //         }
-    //     }
+    //     Preload both buffers
+        // let b_len = fill_frames_from_sd(&mut file, b, &wav);
+        // if a_len == 0 {
+        //     loop {} // empty file
+        // }
+
+        // Kick off DMA with buffer A
+        // prod.enqueue(0).ok();
+
+        // let mut next_is_a = false; // after A, we'll submit B, etc.
+        //
+        // loop {
+        //     // Wait until TX channel is idle (previous DMA buffer has finished)
+        //     if i2s_tx.is_tx_idle() {
+        //         // Refill the buffer we just finished (the opposite of what we submit next)
+        //         if next_is_a {
+        //             // we're about to submit A; refill B
+        //             let b_filled = fill_frames_from_sd(&mut file, b, &wav);
+        //             // If EOF, you can break or loop by seeking to start again
+        //             let submit_len = if a_len == 0 { 0 } else { a_len };
+        //             if submit_len == 0 { break; }
+        //             i2s_tx.write_dma(&a[..submit_len]).unwrap();
+        //             prod.enqueue(0).ok();
+        //         } else {
+        //             // we're about to submit B; refill A
+        //             let a_filled = fill_frames_from_sd(&mut file, a, &wav);
+        //             let submit_len = if b_len == 0 { 0 } else { b_len };
+        //             if submit_len == 0 { break; }
+        //             i2s_tx.write_dma(&b[..submit_len]).unwrap();
+        //             prod.enqueue(1).ok();
+        //         }
+        //         next_is_a = !next_is_a;
+        //     }
+        // }
     // }
 
     loop {}
