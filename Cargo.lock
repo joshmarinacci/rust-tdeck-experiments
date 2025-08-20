@@ -549,6 +549,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "esp-backtrace"
+version = "0.17.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f270a29a3c4e492399b13e157b10151a7616cba69c4d554076ea93ed1bd2916"
+dependencies = [
+ "cfg-if",
+ "esp-config 0.5.0",
+ "esp-println",
+ "heapless",
+ "semihosting",
+]
+
+[[package]]
 name = "esp-bootloader-esp-idf"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -560,17 +573,6 @@ dependencies = [
  "esp-config 0.4.0",
  "md-5",
  "strum",
-]
-
-[[package]]
-name = "esp-build"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "837020ff95fbf4c15c206541dda7994f1bbe6e1505e36a6a5ecb51fdb61656d7"
-dependencies = [
- "quote",
- "syn",
- "termcolor",
 ]
 
 [[package]]
@@ -691,18 +693,6 @@ dependencies = [
 
 [[package]]
 name = "esp-metadata"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0154d59933c2419ef25a01938517cc6969f47b6af53ebb34c279393aa20d9654"
-dependencies = [
- "anyhow",
- "basic-toml",
- "serde",
- "strum",
-]
-
-[[package]]
-name = "esp-metadata"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a6fbc1d166be84c0750f121e95c8989ddebd7e7bdd86af3594a6cfb34f039650"
@@ -722,19 +712,18 @@ version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "189d36b8c8a752bdebec67fd02a15ebb1432feea345553749bca7ce2393cc795"
 dependencies = [
- "esp-metadata 0.8.0",
+ "esp-metadata",
 ]
 
 [[package]]
 name = "esp-println"
-version = "0.14.0"
+version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fae8b38d5fdc1d29d823c4737f18edfb0ccf0406985cf893f87c0cfc26a6ab33"
+checksum = "3e7e3ab41e96093d7fd307e93bfc88bd646a8ff23036ebf809e116b18869f719"
 dependencies = [
  "critical-section",
  "document-features",
- "esp-build",
- "esp-metadata 0.7.0",
+ "esp-metadata-generated",
  "log",
  "portable-atomic",
 ]
@@ -1156,6 +1145,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "nanomp3"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f69bdf7e634dc76798adc292ebd4f6e8e125cde6843a264fe398c52c3f7e8541"
+
+[[package]]
 name = "nb"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1355,6 +1350,7 @@ dependencies = [
  "embedded-sdmmc",
  "embedded-storage",
  "esp-alloc",
+ "esp-backtrace",
  "esp-bootloader-esp-idf",
  "esp-hal",
  "esp-hal-embassy",
@@ -1366,7 +1362,9 @@ dependencies = [
  "log",
  "micromath",
  "mipidsi",
+ "nanomp3",
  "smoltcp",
+ "static_cell",
 ]
 
 [[package]]
@@ -1380,6 +1378,12 @@ name = "ryu"
 version = "1.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "28d3b2b1366ec20994f1fd18c3c594f05c5dd4bc44d8bb0c1c632c8d6829481f"
+
+[[package]]
+name = "semihosting"
+version = "0.1.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3e1c7d2b77d80283c750a39c52f1ab4d17234e8f30bca43550f5b2375f41d5f"
 
 [[package]]
 name = "serde"
