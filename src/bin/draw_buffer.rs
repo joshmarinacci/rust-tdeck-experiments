@@ -59,17 +59,17 @@ fn main() -> ! {
 
     // ==== display setup ====
     // https://github.com/Xinyuan-LilyGO/T-Deck/blob/master/examples/HelloWorld/HelloWorld.ino
-    let BOARD_SDCARD_CS = peripherals.GPIO39;
-    let RADIO_CS_PIN = peripherals.GPIO9;
-    let BOARD_TFT_CS = peripherals.GPIO12;
+    let board_sdcard_cs = peripherals.GPIO39;
+    let radio_cs_pin = peripherals.GPIO9;
+    let board_tft_cs = peripherals.GPIO12;
     let board_spi_miso = peripherals.GPIO38;
 
     let board_spi_sck = peripherals.GPIO40;
     let board_spi_mosi = peripherals.GPIO41;
 
-    let sdmmc_cs = Output::new(BOARD_SDCARD_CS, High, OutputConfig::default());
-    let radio_cs = Output::new(RADIO_CS_PIN, High, OutputConfig::default());
-    let board_tft = Output::new(BOARD_TFT_CS, High, OutputConfig::default());
+    let sdmmc_cs = Output::new(board_sdcard_cs, High, OutputConfig::default());
+    let radio_cs = Output::new(radio_cs_pin, High, OutputConfig::default());
+    let board_tft = Output::new(board_tft_cs, High, OutputConfig::default());
 
     let board_spi_miso = Input::new(board_spi_miso, InputConfig::default().with_pull(Pull::Up));
 
