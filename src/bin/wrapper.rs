@@ -175,6 +175,8 @@ fn main() -> ! {
         Text::new("Hello Rust!", Point::new(20, 30), style)
             .draw(&mut wrapper.display)
             .unwrap();
-        wrapper.delay.delay_millis(1000);
+
+        info!("battery is {}", wrapper.read_battery_level());
+        wrapper.delay.delay_millis(100);
     }
 }
