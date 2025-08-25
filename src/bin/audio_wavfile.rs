@@ -4,18 +4,6 @@
 use core::mem::MaybeUninit;
 use embedded_hal_bus::spi::{ExclusiveDevice, NoDelay};
 use embedded_sdmmc::{BlockDevice, File, SdCard, Timestamp, VolumeIdx, VolumeManager};
-// use critical_section as cs;
-// use esp_hal::{
-    // clock::ClockControl,
-    // dma::{Dma, DmaPriority},
-    // entry,
-    // gpio::Io,
-    // i2s::{Channel as I2sChannel, DataFormat as I2sDataFmt, I2s, I2sTx, PinsBclkWsDout, Standard as I2sStd},
-    // peripherals::Peripherals,
-    // prelude::*,
-    // spi::{Spi, SpiMode},
-    // timer::TimerGroup,
-// };
 use esp_hal::{dma_buffers, main, Blocking};
 use esp_hal::clock::CpuClock;
 use esp_hal::delay::Delay;
@@ -184,6 +172,7 @@ impl embedded_sdmmc::TimeSource for DummyTime {
 #[main]
 fn main() -> ! {
 
+    // setup
     esp_println::logger::init_logger_from_env();
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
@@ -192,16 +181,13 @@ fn main() -> ! {
     esp_alloc::heap_allocator!(size: 72 * 1024);
     let delay = Delay::new();
 
-    info!("powering on");
 
+    // poweron board
     let BOARD_POWERON = peripherals.GPIO10;
     let BOARD_SDCARD_CS = peripherals.GPIO39;
-
     let mut board_power = Output::new(BOARD_POWERON, High, OutputConfig::default());
     board_power.set_high();
     delay.delay_millis(1000);
-
-    info!("setting up SPI");
 
     // --- SPI2 for SD card (T-Deck pins) ---
     let BOARD_SPI_SCK = peripherals.GPIO40;
@@ -226,8 +212,8 @@ fn main() -> ! {
         ExclusiveDevice::new_no_delay(sdmmc_spi_bus, sdmmc_cs).expect("Failed to create SpiDevice");
 
 
-    info!("setting up SD CARD");
 
+    // setup SD Card for reading FAT
     let card = SdCard::new(sdmmc_spi, delay);
     info!("size of card in bytes: {}",card.num_bytes().unwrap());
     info!("type of card: {:?}",card.get_card_type());
@@ -238,15 +224,15 @@ fn main() -> ! {
     info!("opening root dir");
     let root_dir = volume.open_root_dir().unwrap();
 
-    // Open your WAV file (8.3 name unless you enable long names)
+    // get file for WAV file
     let mut file = root_dir.open_file_in_dir(
-        "U2MYST.WAV", // "TEST.WAV" as 8.3 (pad with spaces)
+        "U2MYST.WAV",
         embedded_sdmmc::Mode::ReadOnly,
     ).unwrap();
 
     info!("opened the file {:?}",file);
 
-    // Read and parse header
+    // Read and parse WAV header
     let mut hdr = [0u8; WAV_HEADER_LEN];
     file.read(&mut hdr).unwrap();
     let wav = parse_wav_header(&hdr).expect("Unsupported WAV header");
@@ -258,13 +244,14 @@ fn main() -> ! {
     info!("wav {:?}",wav);
 
 
+    // create DMA buffers
     let (_, _, tx_buffer, tx_descriptors) = dma_buffers!(0, CHUNK_BYTES*4);
 
+    // SETUP I2S
     // --- I2S0 TX to built-in speaker pins ---
     let bclk = peripherals.GPIO7;
     let ws   = peripherals.GPIO5;
     let dout = peripherals.GPIO6;
-
     let i2s = I2s::new(peripherals.I2S0,
                        Standard::Philips,
                        DataFormat::Data16Channel16,
@@ -272,24 +259,32 @@ fn main() -> ! {
                        peripherals.DMA_CH0,
                        );
     let mut i2s_tx = i2s.i2s_tx.with_bclk(bclk).with_ws(ws).with_dout(dout).build(tx_descriptors);
-    // let tx_pins = PinsBclkWsDout::new(bclk, ws, dout);
 
 
-        // let (a, b) = (&mut DMA_BUF_A.0, &mut DMA_BUF_B.0);
+
+    // create temp buffers
     let mut a = [0u32; CHUNK_BYTES/4];
     let mut filler = [0u8; CHUNK_BYTES];
+
+    // pre-fill from file into &a buffer, using settings from &wav
     let len = fill_frames_from_sd(&mut file, &mut a, &wav);
     info!("read len {}",len);
     info!("size of filler = {}", filler.len());
     info!("tx buffer is {}", tx_buffer.len());
     info!("CHUNK_BYTES is {}", CHUNK_BYTES);
+
+    // setup circular buffer writing
     let mut transaction = i2s_tx.write_dma_circular(&tx_buffer).unwrap();
     loop {
+        // see how much we can write to
         let avail = transaction.available().unwrap();
+        // if we can write at least a full chunk
         if avail > CHUNK_BYTES {
+            // copy from A buffer into FILLER buffer
             for (dest_c, source_e) in filler.chunks_exact_mut(4).zip(a.iter()) {
                 dest_c.copy_from_slice(&source_e.to_le_bytes())
             }
+            // send the DMA write transaction
             match transaction.push(&filler) {
                 Ok(written) => {
                     info!("wrote {}",written);
@@ -299,6 +294,7 @@ fn main() -> ! {
                 }
             }
             delay.delay_millis(1);
+            // refill the A buffer from frames from the WAV file
             let len = fill_frames_from_sd(&mut file, &mut a, &wav);
         }
         delay.delay_millis(1);
