@@ -110,13 +110,13 @@ fn make_sawtooth_sample(freq: f32, vol: f32, i: usize) -> u16 {
 }
 
 struct SampleSource {
-    i: u8,
+    i: i32,
 }
 
 impl SampleSource {
     // choose values which DON'T restart on every descriptor buffer's start
-    const ADD: u8 = 5;
-    const CUT_OFF: u8 = 113;
+    // const ADD: u8 = 1;
+    // const CUT_OFF: u8 = 255;
 
     fn new() -> Self {
         Self { i: 0 }
@@ -124,12 +124,13 @@ impl SampleSource {
 }
 
 impl Iterator for SampleSource {
-    type Item = u8;
+    type Item = f32;
 
     fn next(&mut self) -> Option<Self::Item> {
         let i = self.i;
-        self.i = (i + Self::ADD) % Self::CUT_OFF;
-        Some(i)
+        self.i += 1;
+        let samp:f32 = ((i as f32)/10.0*0.8).sin() * (i16::MAX as f32) * 0.5;
+        Some(samp)
     }
 }
 
@@ -174,58 +175,26 @@ async fn main(spawner: Spawner) {
         .with_dout(peripherals.GPIO6)
         .build(tx_descriptors);
 
-    let data =
-        unsafe { core::slice::from_raw_parts(&SINE as *const _ as *const u8, SINE.len() * 2) };
-    // let data = make_sawtooth(240.0, 0.2);
-
     let buffer = tx_buffer;
-    // let mut idx = 0;
-    // for i in 0..usize::min(data.len(), buffer.len()) {
-    //     buffer[i] = data[idx];
-    //
-    //     idx += 1;
-    //
-    //     if idx >= data.len() {
-    //         idx = 0;
-    //     }
-    // }
-
-    // let mut filler = [0u8; 10000];
-    // let mut idx = 32000 % data.len();
-
-    info!("Start");
     let mut transaction = i2s_tx.write_dma_circular_async(buffer).unwrap();
-    let freq = 120.0 * 2.0;
     const OMEGA_INC: f32 = TAU / SAMPLE_RATE_HZ as f32;
-    // let mut omega: f32 = 0.0;
     let mut count = 0;
-    // let mut vol: f32 = 0.1;
     let mut samples = SampleSource::new();
     loop {
-        // for i in (0..filler.len()).step_by(2) {
-        //     filler[i] = data[(idx + i) % data.len()];
-        //     filler[i + 1] = data[(idx + i + 1) % data.len()];
-        // let sample = ((omega * freq).sin() * vol * (i16::MAX as f32)) as u16;
-        // filler[i] = (sample & 0x00ff) as u8;
-        // filler[i + 1] = ((sample & 0xff00) >> 8) as u8;
-        // omega += OMEGA_INC;
-        // if omega >= TAU {
-        //     omega -= TAU;
-        // }
-        // }
-        // info!("Next");
-
-        // let written = transaction.push(&filler).await.unwrap();
         let written = transaction.push_with(|buf| {
-            for b in buf.iter_mut() {
-                *b = samples.next().unwrap();
+            for i in (0..buf.len()).step_by(4) {
+                let samp = samples.next().unwrap();
+                let isamp = samp as u16;
+                buf[i+0] = (isamp & 0x00ff) as u8;
+                buf[i+1] = ((isamp & 0xff00) >> 8) as u8;
+                buf[i+2] = (isamp & 0x00ff) as u8;
+                buf[i+3] = ((isamp & 0xff00) >> 8) as u8;
             }
             buf.len()
         }).await.unwrap();
-        // idx = (idx + written) % data.len();
         info!("written {}", written);
         count += 1;
-        if count >= 20 {
+        if count >= 50 {
             break;
         }
     }
