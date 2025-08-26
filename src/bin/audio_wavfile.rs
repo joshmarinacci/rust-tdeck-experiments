@@ -2,9 +2,10 @@
 #![no_main]
 
 use core::mem::MaybeUninit;
+use embassy_executor::Spawner;
 use embedded_hal_bus::spi::{ExclusiveDevice, NoDelay};
 use embedded_sdmmc::{BlockDevice, File, SdCard, Timestamp, VolumeIdx, VolumeManager};
-use esp_hal::{dma_buffers, main, Blocking};
+use esp_hal::{dma_buffers, dma_circular_buffers, main, Blocking};
 use esp_hal::clock::CpuClock;
 use esp_hal::delay::Delay;
 use esp_hal::dma::DmaTransferTx;
@@ -30,8 +31,8 @@ esp_bootloader_esp_idf::esp_app_desc!();
 extern crate alloc;
 
 // ---------- Config ----------
-// const CHUNK_BYTES: usize = 8192; // increase if you get underruns
-const CHUNK_BYTES: usize = 32000; // increase if you get underruns
+const CHUNK_BYTES: usize = 8192*2; // increase if you get underruns
+// const CHUNK_BYTES: usize = 48000; // increase if you get underruns
 const WAV_HEADER_LEN: usize = 44;
 
 // T-Deck pins
@@ -47,11 +48,11 @@ const I2S_DOUT: i32 = 2;
 // ---------- DMA buffers ----------
 #[repr(align(4))]
 struct Aligned<T>(T);
-static mut DMA_BUF_A: Aligned<[u32; CHUNK_BYTES / 4]> = Aligned([0; CHUNK_BYTES / 4]);
-static mut DMA_BUF_B: Aligned<[u32; CHUNK_BYTES / 4]> = Aligned([0; CHUNK_BYTES / 4]);
+// static mut DMA_BUF_A: Aligned<[u32; CHUNK_BYTES / 4]> = Aligned([0; CHUNK_BYTES / 4]);
+// static mut DMA_BUF_B: Aligned<[u32; CHUNK_BYTES / 4]> = Aligned([0; CHUNK_BYTES / 4]);
 
 // Queue to track which buffer is currently playing (0 or 1)
-static mut Q_STORAGE: MaybeUninit<Queue<u8, 4>> = MaybeUninit::uninit();
+// static mut Q_STORAGE: MaybeUninit<Queue<u8, 4>> = MaybeUninit::uninit();
 
 // ---------- WAV info ----------
 #[derive(Clone, Copy, Debug)]
@@ -169,16 +170,15 @@ impl embedded_sdmmc::TimeSource for DummyTime {
 }
 
 // ----------------- MAIN -----------------
-#[main]
-fn main() -> ! {
-
+#[esp_hal_embassy::main]
+async fn main(spawner: Spawner) {
     // setup
     esp_println::logger::init_logger_from_env();
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
     let timer_g1 = TimerGroup::new(peripherals.TIMG1);
     esp_hal_embassy::init(timer_g1.timer0);
-    esp_alloc::heap_allocator!(size: 72 * 1024);
+    esp_alloc::heap_allocator!(size: 96 * 1024);
     let delay = Delay::new();
 
 
@@ -243,9 +243,11 @@ fn main() -> ! {
     info!("read the wave file");
     info!("wav {:?}",wav);
 
+    // test_sdcard_reading(&mut file, &wav);
 
-    // create DMA buffers
-    let (_, _, tx_buffer, tx_descriptors) = dma_buffers!(0, CHUNK_BYTES*4);
+
+    // // create DMA buffers
+    let (_, _, tx_buffer, tx_descriptors) = dma_circular_buffers!(0, CHUNK_BYTES);
 
     // SETUP I2S
     // --- I2S0 TX to built-in speaker pins ---
@@ -258,45 +260,118 @@ fn main() -> ! {
                        Rate::from_hz(44100),
                        peripherals.DMA_CH0,
                        );
-    let mut i2s_tx = i2s.i2s_tx.with_bclk(bclk).with_ws(ws).with_dout(dout).build(tx_descriptors);
+    let mut i2s_tx = i2s.into_async()
+        .i2s_tx
+        .with_bclk(bclk)
+        .with_ws(ws)
+        .with_dout(dout)
+        .build(tx_descriptors);
 
 
 
     // create temp buffers
-    let mut a = [0u32; CHUNK_BYTES/4];
+    let mut file_buffer = [0u32; CHUNK_BYTES/2];
     let mut filler = [0u8; CHUNK_BYTES];
 
     // pre-fill from file into &a buffer, using settings from &wav
-    let len = fill_frames_from_sd(&mut file, &mut a, &wav);
-    info!("read len {}",len);
+    // let len = fill_frames_from_sd(&mut file, &mut file_buffer, &wav);
+    // info!("read len {}",len);
     info!("size of filler = {}", filler.len());
     info!("tx buffer is {}", tx_buffer.len());
     info!("CHUNK_BYTES is {}", CHUNK_BYTES);
 
     // setup circular buffer writing
-    let mut transaction = i2s_tx.write_dma_circular(&tx_buffer).unwrap();
+    let mut transaction = i2s_tx.write_dma_circular_async(tx_buffer).unwrap();
     loop {
-        // see how much we can write to
-        let avail = transaction.available().unwrap();
-        // if we can write at least a full chunk
-        if avail > CHUNK_BYTES {
-            // copy from A buffer into FILLER buffer
-            for (dest_c, source_e) in filler.chunks_exact_mut(4).zip(a.iter()) {
-                dest_c.copy_from_slice(&source_e.to_le_bytes())
+        transaction.push_with(|dma_buf| {
+            // len = length of dma_buffer in bytes
+            let i32_len = file_buffer.len();
+            // use the shorter of dma and file buffer lengths
+            let file_len = (dma_buf.len()/4).min(i32_len);
+            // file_buffer is u32 so we use 1/4 of the len
+            let slice = &mut file_buffer[0..file_len];
+            fill_frames_from_sd(&mut file, slice, &wav);
+            for (dest_byte, source_i32) in dma_buf.chunks_exact_mut(4).zip(slice.iter()) {
+                dest_byte.copy_from_slice(&source_i32.to_le_bytes())
             }
-            // send the DMA write transaction
-            match transaction.push(&filler) {
-                Ok(written) => {
-                    info!("wrote {}",written);
-                }
-                Err(e) => {
-                    error!("{:?}",e);
-                }
-            }
-            delay.delay_millis(1);
-            // refill the A buffer from frames from the WAV file
-            let len = fill_frames_from_sd(&mut file, &mut a, &wav);
-        }
-        delay.delay_millis(1);
+            file_len*4
+        }).await.unwrap();
     }
+}
+
+fn test_sdcard_reading(
+    file: &mut File<SdCard<ExclusiveDevice<Spi<Blocking>, Output, NoDelay>, Delay>, DummyTime, 4, 4, 1>,
+    w: &WavInfo,
+) {
+    info!("testing card read");
+    info!("reading {CHUNK_BYTES} at a time");
+
+    let mut out_frames = [0u32; CHUNK_BYTES/4];
+    let mut tmp = [0u8; CHUNK_BYTES];
+
+    let bytes_per_sample = (w.bits_per_sample / 8) as usize; // 2
+    info!("bytes per sample {bytes_per_sample}");
+    let ch = w.num_channels as usize; // 1 or 2
+    info!("channel count {ch}");
+
+    // Compute how many PCM bytes we'd like to fill
+    let want_frames = out_frames.len();
+    let want_pcm_bytes = want_frames * bytes_per_sample * ch;
+    let to_read = core::cmp::min(tmp.len(), want_pcm_bytes);
+
+    let start = embassy_time::Instant::now();
+    info!("starting to read at {}", start);
+
+    let mut count = 0;
+    let mut total = 0;
+    loop {
+        // read some bytes
+        let n = file.read(&mut tmp[..to_read]).unwrap_or(0);
+        total += n;
+        if n == 0 {
+            info!("read zero bytes");
+            break;
+        }
+
+        if file.is_eof() {
+            info!("end of file");
+            break;
+        }
+
+        let mut produced = 0usize;
+        let mut i = 0usize;
+        while i + bytes_per_sample * ch <= n && produced < out_frames.len() {
+            // 16-bit little-endian
+            let l = i16::from_le_bytes([tmp[i], tmp[i + 1]]) as i32;
+            let r = if ch == 2 {
+                let j = i + 2;
+                i16::from_le_bytes([tmp[j], tmp[j + 1]]) as i32
+            } else {
+                l
+            };
+            let lu = (l as u32) & 0xFFFF;
+            let ru = (r as u32) & 0xFFFF;
+
+            out_frames[produced] = (lu << 16) | ru;
+            produced += 1;
+            i += bytes_per_sample * ch; // advance by one sample frame in input
+        }
+        count += 1;
+        if count > 200 {
+            break;
+        }
+        // info!("made a frame");
+    }
+    info!("read total bytes of {total}");
+    let end = embassy_time::Instant::now();
+    info!("ending read at {}", end);
+    let dur = (end-start).as_millis();
+    info!("total ticks is {} msec", dur);
+    let bps = (total as u64 * 1000) / dur;
+    info!("kbytes per sec {}", bps/1024);
+    //753kb/s over ~4 sec
+    //755kb/s over ~8 sec
+    //~42mb over at
+    // 44.1khz at 16bits per sample, stereo, is 176,400 bytes per second
+
 }

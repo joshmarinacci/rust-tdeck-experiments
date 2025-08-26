@@ -1344,6 +1344,7 @@ dependencies = [
  "blocking-network-stack",
  "byteorder",
  "embassy-executor",
+ "embassy-time",
  "embedded-graphics",
  "embedded-hal-bus",
  "embedded-io",
