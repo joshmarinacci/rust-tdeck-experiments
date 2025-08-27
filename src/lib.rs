@@ -11,10 +11,12 @@ use esp_hal::analog::adc::{Adc, AdcConfig, AdcPin, Attenuation};
 use esp_hal::delay::Delay;
 use esp_hal::gpio::Level::{High, Low};
 use esp_hal::gpio::{Input, InputConfig, Output, OutputConfig, Pull};
-use esp_hal::i2c::master::{BusTimeout, Config, I2c};
+use esp_hal::i2c::master::{BusTimeout, Config, Error, I2c};
 use esp_hal::peripherals::Peripherals;
 use esp_hal::time::Rate;
 use esp_hal::Blocking;
+use gt911::{Error as Gt911Error, Gt911, Gt911Blocking, Point};
+use heapless::Vec;
 use log::info;
 use mipidsi::interface::SpiInterface;
 use mipidsi::models::ST7789;
@@ -46,8 +48,9 @@ pub struct Wrapper {
     pub trackball_click: bool,
     pub trackball_right: bool,
     pub trackball_left: bool,
-    pub last_up_high: bool,
-    pub last_down_high: bool,
+    pub trackball_up: bool,
+    pub trackball_down: bool,
+    pub touch:Gt911Blocking<I2c<'static, Blocking>>,
 }
 
 impl Wrapper {
@@ -74,7 +77,7 @@ impl Wrapper {
         pin_value
     }
 
-    pub fn trackball(&mut self) {
+    pub fn poll_trackball(&mut self) {
         if self.trackball_click_input.is_high() != self.trackball_click {
             info!("trackball click changed ");
             self.trackball_click = self.trackball_click_input.is_high();
@@ -87,15 +90,19 @@ impl Wrapper {
             info!("trackball left changed ");
             self.trackball_left = self.trackball_left_input.is_high();
         }
-        if self.trackball_up_input.is_high() != self.last_up_high {
+        if self.trackball_up_input.is_high() != self.trackball_up {
             info!("trackball up changed ");
-            self.last_up_high = self.trackball_up_input.is_high();
+            self.trackball_up = self.trackball_up_input.is_high();
         }
-        if self.trackball_down_input.is_high() != self.last_down_high {
+        if self.trackball_down_input.is_high() != self.trackball_down {
             info!("trackball down changed ");
-            self.last_down_high = self.trackball_down_input.is_high();
+            self.trackball_down = self.trackball_down_input.is_high();
         }
 
+    }
+
+    pub fn poll_touchscreen(&mut self) -> Result<Vec<Point, 5>, Gt911Error<Error>> {
+        self.touch.get_multi_touch(&mut self.i2c)
     }
 }
 
@@ -148,7 +155,7 @@ impl Wrapper {
         info!("initialized display");
 
         // initialize keyboard
-        let i2c = I2c::new(
+        let mut i2c = I2c::new(
             peripherals.I2C0,
             Config::default()
                 .with_frequency(Rate::from_khz(100))
@@ -163,12 +170,16 @@ impl Wrapper {
         let mut adc_config: AdcConfig<ADC1> = AdcConfig::new();
         let mut pin: AdcPin<GPIO4, ADC1> = adc_config.enable_pin(analog_pin, Attenuation::_11dB);
 
-        // set up the trackball button pin
 
+        let touch = Gt911Blocking::default();
+        touch.init(&mut i2c).unwrap();
+
+        // set up the trackball button pins
         Wrapper {
             display,
             i2c,
             delay,
+            touch,
             adc: Adc::new(peripherals.ADC1, adc_config),
             battery_pin: pin,
             trackball_click_input: Input::new(
@@ -190,12 +201,12 @@ impl Wrapper {
                 peripherals.GPIO3,
                 InputConfig::default().with_pull(Pull::Up),
             ),
-            last_up_high:false,
+            trackball_up:false,
             trackball_down_input: Input::new(
                 peripherals.GPIO15,
                 InputConfig::default().with_pull(Pull::Up),
             ),
-            last_down_high:false,
+            trackball_down:false,
         }
     }
 }

@@ -69,6 +69,14 @@ fn main() -> ! {
             .unwrap();
 
         info!("battery is {}", wrapper.read_battery_level());
+
+        wrapper.poll_trackball();
+        info!("moved {} {} {} {}", wrapper.trackball_right, wrapper.trackball_left, wrapper.trackball_up, wrapper.trackball_down);
+        if let Ok(points) = wrapper.poll_touchscreen() {
+            // stack allocated Vec containing 0-5 points
+            info!("{:?}", points)
+        }
+
         wrapper.delay.delay_millis(100);
     }
 }
