@@ -55,42 +55,36 @@ fn main() -> ! {
     // ==== display setup ====
     // https://github.com/Xinyuan-LilyGO/T-Deck/blob/master/examples/HelloWorld/HelloWorld.ino
 
-    // set TFT CS to high
-    let mut tft_cs = Output::new(peripherals.GPIO12, High, OutputConfig::default());
-    tft_cs.set_high();
-    let tft_miso = Input::new(
-        peripherals.GPIO38,
-        InputConfig::default().with_pull(Pull::Up),
-    );
-    let tft_sck = peripherals.GPIO40;
-    let tft_mosi = peripherals.GPIO41;
-    let tft_dc = Output::new(peripherals.GPIO11, Low, OutputConfig::default());
-    let mut tft_enable = Output::new(peripherals.GPIO42, High, OutputConfig::default());
+    let mut TFT_CS = Output::new(peripherals.GPIO12, High,
+                                 OutputConfig::default());
+    TFT_CS.set_high();
+    let tft_dc = Output::new(peripherals.GPIO11, Low,
+                             OutputConfig::default());
+    let mut tft_enable = Output::new(peripherals.GPIO42, High,
+                                     OutputConfig::default());
     tft_enable.set_high();
 
-    info!("creating spi device");
     let spi = Spi::new(
         peripherals.SPI2,
-        SpiConfig::default().with_frequency(Rate::from_mhz(40)), // .with_mode(Mode::_0)
-    )
-    .unwrap()
-    .with_sck(tft_sck)
-    .with_miso(tft_miso)
-    .with_mosi(tft_mosi);
+        SpiConfig::default().with_frequency(Rate::from_mhz(40)),
+    ).unwrap()
+    .with_sck(peripherals.GPIO40)
+    .with_miso(Input::new(peripherals.GPIO38,
+                          InputConfig::default().with_pull(Pull::Up)))
+    .with_mosi(peripherals.GPIO41);
+
     let mut buffer = [0u8; 512];
 
     info!("setting up the display");
     let spi_delay = Delay::new();
-    let spi_device = ExclusiveDevice::new(spi, tft_cs, spi_delay).unwrap();
+    let spi_device = ExclusiveDevice::new(spi, TFT_CS, spi_delay).unwrap();
     let di = SpiInterface::new(spi_device, tft_dc, &mut buffer);
     info!("building");
     let mut display = Builder::new(ST7789, di)
-        // .reset_pin(tft_enable)
         .display_size(240, 320)
         .invert_colors(ColorInversion::Inverted)
         .color_order(ColorOrder::Rgb)
         .orientation(Orientation::new().rotate(Rotation::Deg90))
-        // .display_size(320,240)
         .init(&mut delay)
         .unwrap();
 
