@@ -61,17 +61,17 @@ fn panic(nfo: &core::panic::PanicInfo) -> ! {
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
-struct SampleSource {
+struct SineWaveSource {
     i: i32,
 }
 
-impl SampleSource {
+impl SineWaveSource {
     fn new() -> Self {
         Self { i: 0 }
     }
 }
 
-impl Iterator for SampleSource {
+impl Iterator for SineWaveSource {
     type Item = f32;
     fn next(&mut self) -> Option<Self::Item> {
         let i = self.i;
@@ -81,6 +81,36 @@ impl Iterator for SampleSource {
     }
 }
 
+struct SawtoothWaveSource {
+    phase: u32,      // 0..=u32::MAX wraps around (fixed-point phase)
+    step: u32,       // how much to advance per sample
+    amplitude: i16,  // max amplitude
+}
+
+impl SawtoothWaveSource {
+    pub fn new(freq: u32, sample_rate: u32, amplitude: i16) -> Self {
+        // step = freq / sample_rate, in Q32 fixed point
+        let step = ((freq as u64) << 32) / (sample_rate as u64);
+        Self {
+            phase: 0,
+            step: step as u32,
+            amplitude,
+        }
+    }
+}
+
+impl Iterator for SawtoothWaveSource {
+    type Item = i16;
+    fn next(&mut self) -> Option<i16> {
+        let frac = self.phase >> 16; // use upper 16 bits as position (0..65535)
+        // Map 0..65535 → -amplitude..+amplitude
+        let val = (frac as i32 * (self.amplitude as i32 * 2) / 65536)
+            - self.amplitude as i32;
+
+        self.phase = self.phase.wrapping_add(self.step);
+        Some(val as i16)
+    }
+}
 
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner) {
@@ -119,7 +149,8 @@ async fn main(spawner: Spawner) {
     let buffer = tx_buffer;
     let mut transaction = i2s_tx.write_dma_circular_async(buffer).unwrap();
     let mut count = 0;
-    let mut samples = SampleSource::new();
+    // let mut samples = SineWaveSource::new();
+    let mut samples = SawtoothWaveSource::new(440, 44_100, i16::MAX / 2); // 440Hz, half volume
     loop {
         let written = transaction.push_with(|buf| {
             for i in (0..buf.len()).step_by(4) {
