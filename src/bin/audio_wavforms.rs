@@ -150,7 +150,7 @@ async fn main(spawner: Spawner) {
     let mut transaction = i2s_tx.write_dma_circular_async(buffer).unwrap();
     let mut count = 0;
     // let mut samples = SineWaveSource::new();
-    let mut samples = SawtoothWaveSource::new(440, 44_100, i16::MAX / 2); // 440Hz, half volume
+    let mut samples = SawtoothWaveSource::new(262, 44_100, i16::MAX / 4); // 440Hz, half volume
     loop {
         let written = transaction.push_with(|buf| {
             for i in (0..buf.len()).step_by(4) {
