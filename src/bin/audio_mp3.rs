@@ -239,9 +239,15 @@ async fn main(spawnerr: Spawner) -> ! {
     info!("opening root dir");
     let root_dir = volume.open_root_dir().unwrap();
 
+    root_dir
+        .iterate_dir(|de| {
+            info!("dir entry {:?} is {} bytes", de.name, de.size);
+        })
+        .unwrap();
+
     // Open your WAV file (8.3 name unless you enable long names)
     let file = root_dir.open_file_in_dir(
-        "U2MYST.MP3",
+        "U2NONAME.MP3",
         embedded_sdmmc::Mode::ReadOnly,
     ).unwrap();
 
