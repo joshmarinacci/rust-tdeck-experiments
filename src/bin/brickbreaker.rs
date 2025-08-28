@@ -9,19 +9,10 @@
 use core::default::Default;
 use alloc::vec;
 use alloc::vec::Vec;
-
 use embedded_graphics::*;
-use embedded_graphics::mono_font::ascii::FONT_6X10;
-use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::primitives::*;
-// use embedded_graphics::geometry::{OriginDimensions, Point, Size};
-// use embedded_graphics::mono_font::ascii::FONT_6X10;
-// use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::pixelcolor::Rgb565;
 use embedded_graphics::prelude::*;
-use embedded_graphics::text::Text;
-// use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
-// use embedded_graphics::text::Text;
 use esp_hal::clock::CpuClock;
 use esp_hal::{main, Config};
 use log::info;
@@ -152,24 +143,16 @@ fn main() -> ! {
     let mut game = GameView::new();
 
     loop {
-        info!("Hello world!");
-
         wrapper.poll_keyboard();
-        let color = Rgb565::RED;
-        wrapper.display.clear(color).unwrap();
-        let style = MonoTextStyle::new(&FONT_6X10, Rgb565::WHITE);
-        Text::new("Hello Rust!", Point::new(20, 30), style)
-            .draw(&mut wrapper.display)
-            .unwrap();
-
+        wrapper.poll_trackball();
+        game.handle_input(&mut wrapper);
         game.draw(&mut wrapper);
-        info!("battery is {}", wrapper.read_battery_level());
-        wrapper.delay.delay_millis(100);
+        wrapper.delay.delay_millis(10);
     }
 }
 
 impl GameView {
-    fn draw(&mut self, context:&mut Wrapper) {
+    fn draw(&mut self, wrapper:&mut Wrapper) {
         self.count = self.count + 1;
 
         let old_ball_bounds = self.ball_bounds;
@@ -178,34 +161,34 @@ impl GameView {
         // draw background
         if self.count < 10 {
             let screen = Rectangle::new(Point::new(0, 0), Size::new(320, 240));
-            screen.into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK)).draw(&mut context.display).unwrap();
+            screen.into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK)).draw(&mut wrapper.display).unwrap();
         }
 
         for brick in &self.bricks {
             if brick.active {
-                brick.bounds.into_styled(PrimitiveStyle::with_fill(brick.color)).draw(&mut context.display).unwrap();
+                brick.bounds.into_styled(PrimitiveStyle::with_fill(brick.color)).draw(&mut wrapper.display).unwrap();
             } else {
-                brick.bounds.into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK)).draw(&mut context.display).unwrap();
+                brick.bounds.into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK)).draw(&mut wrapper.display).unwrap();
             }
         }
 
 
         // draw the ball
-        old_ball_bounds.into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK)).draw(&mut context.display).unwrap();
-        self.ball_bounds.into_styled(PrimitiveStyle::with_fill(Rgb565::MAGENTA)).draw(&mut context.display).unwrap();
+        old_ball_bounds.into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK)).draw(&mut wrapper.display).unwrap();
+        self.ball_bounds.into_styled(PrimitiveStyle::with_fill(Rgb565::MAGENTA)).draw(&mut wrapper.display).unwrap();
 
         // draw the paddle
-        self.old_paddle.into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK)).draw(&mut context.display).unwrap();
-        self.paddle.into_styled(PrimitiveStyle::with_fill(Rgb565::RED)).draw(&mut context.display).unwrap();
+        self.old_paddle.into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK)).draw(&mut wrapper.display).unwrap();
+        self.paddle.into_styled(PrimitiveStyle::with_fill(Rgb565::RED)).draw(&mut wrapper.display).unwrap();
     }
 
-    fn handle_input(&mut self, event:&mut Wrapper) {
+    fn handle_input(&mut self, wrapper:&mut Wrapper) {
         self.old_paddle = self.paddle;
         let mut x = 0;
-        if event.trackball_left {
+        if wrapper.left.changed {
             x = -1;
         }
-        if event.trackball_right {
+        if wrapper.right.changed {
             x = 1;
         }
         self.paddle = self.paddle.translate(Point::new(x * 20, 0));

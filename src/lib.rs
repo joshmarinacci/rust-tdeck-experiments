@@ -40,17 +40,27 @@ pub struct Wrapper {
     pub delay: Delay,
     adc: Adc<'static, ADC1<'static>, Blocking>,
     battery_pin: AdcPin<GPIO4<'static>, ADC1<'static>>,
-    trackball_click_input: Input<'static>,
-    trackball_right_input: Input<'static>,
-    trackball_left_input: Input<'static>,
-    trackball_up_input: Input<'static>,
-    trackball_down_input: Input<'static>,
-    pub trackball_click: bool,
-    pub trackball_right: bool,
-    pub trackball_left: bool,
-    pub trackball_up: bool,
-    pub trackball_down: bool,
+    pub left:TrackballPin,
+    pub right:TrackballPin,
+    pub up:TrackballPin,
+    pub down:TrackballPin,
+    pub click:TrackballPin,
     pub touch:Gt911Blocking<I2c<'static, Blocking>>,
+}
+
+pub struct TrackballPin {
+    pin:Input<'static>,
+    prev:bool,
+    pub changed:bool,
+}
+impl TrackballPin {
+    fn poll(&mut self) {
+        self.changed = false;
+        if self.pin.is_high() != self.prev {
+            self.prev = self.pin.is_high();
+            self.changed = true;
+        }
+    }
 }
 
 impl Wrapper {
@@ -78,27 +88,11 @@ impl Wrapper {
     }
 
     pub fn poll_trackball(&mut self) {
-        if self.trackball_click_input.is_high() != self.trackball_click {
-            info!("trackball click changed ");
-            self.trackball_click = self.trackball_click_input.is_high();
-        }
-        if self.trackball_right_input.is_high() != self.trackball_right {
-            info!("trackball right changed ");
-            self.trackball_right = self.trackball_right_input.is_high();
-        }
-        if self.trackball_left_input.is_high() != self.trackball_left {
-            info!("trackball left changed ");
-            self.trackball_left = self.trackball_left_input.is_high();
-        }
-        if self.trackball_up_input.is_high() != self.trackball_up {
-            info!("trackball up changed ");
-            self.trackball_up = self.trackball_up_input.is_high();
-        }
-        if self.trackball_down_input.is_high() != self.trackball_down {
-            info!("trackball down changed ");
-            self.trackball_down = self.trackball_down_input.is_high();
-        }
-
+        self.left.poll();
+        self.right.poll();
+        self.up.poll();
+        self.down.poll();
+        self.click.poll();
     }
 
     pub fn poll_touchscreen(&mut self) -> Result<Vec<Point, 5>, Gt911Error<Error>> {
@@ -182,31 +176,61 @@ impl Wrapper {
             touch,
             adc: Adc::new(peripherals.ADC1, adc_config),
             battery_pin: pin,
-            trackball_click_input: Input::new(
-                peripherals.GPIO0,
-                InputConfig::default().with_pull(Pull::Up),
-            ),
-            trackball_click:false,
-            trackball_right_input: Input::new(
-                peripherals.GPIO2,
-                InputConfig::default().with_pull(Pull::Up),
-            ),
-            trackball_right:false,
-            trackball_left_input: Input::new(
-                peripherals.GPIO1,
-                InputConfig::default().with_pull(Pull::Up),
-            ),
-            trackball_left:false,
-            trackball_up_input: Input::new(
-                peripherals.GPIO3,
-                InputConfig::default().with_pull(Pull::Up),
-            ),
-            trackball_up:false,
-            trackball_down_input: Input::new(
-                peripherals.GPIO15,
-                InputConfig::default().with_pull(Pull::Up),
-            ),
-            trackball_down:false,
+            left: TrackballPin {
+                changed: false,
+                prev: false,
+                pin: Input::new(
+                    peripherals.GPIO1,
+                    InputConfig::default().with_pull(Pull::Up),
+                )
+            },
+            right: TrackballPin {
+                changed:false,
+                prev:false,
+                pin: Input::new(
+                    peripherals.GPIO2,
+                    InputConfig::default().with_pull(Pull::Up),
+                )
+            },
+            up: TrackballPin {
+                changed:false,
+                prev:false,
+                pin: Input::new(
+                    peripherals.GPIO3,
+                    InputConfig::default().with_pull(Pull::Up),
+                )
+            },
+            down: TrackballPin {
+                changed:false,
+                prev:false,
+                pin: Input::new(
+                    peripherals.GPIO5,
+                    InputConfig::default().with_pull(Pull::Up),
+                )
+            },
+            click: TrackballPin {
+                changed:false,
+                prev:false,
+                pin: Input::new(
+                    peripherals.GPIO0,
+                    InputConfig::default().with_pull(Pull::Up),
+                )
+            },
+            // trackball_click_input: Input::new(
+            //     peripherals.GPIO0,
+            //     InputConfig::default().with_pull(Pull::Up),
+            // ),
+            // trackball_click:false,
+            // trackball_up_input: Input::new(
+            //     peripherals.GPIO3,
+            //     InputConfig::default().with_pull(Pull::Up),
+            // ),
+            // trackball_up:false,
+            // trackball_down_input: Input::new(
+            //     peripherals.GPIO15,
+            //     InputConfig::default().with_pull(Pull::Up),
+            // ),
+            // trackball_down:false,
         }
     }
 }
