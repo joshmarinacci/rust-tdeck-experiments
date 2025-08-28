@@ -2,6 +2,7 @@
 #![no_main]
 
 use core::mem::MaybeUninit;
+use embassy_executor::Spawner;
 use embedded_hal_bus::spi::{ExclusiveDevice, NoDelay};
 use embedded_sdmmc::{BlockDevice, File, SdCard, Timestamp, VolumeIdx, VolumeManager};
 // use critical_section as cs;
@@ -16,7 +17,7 @@ use embedded_sdmmc::{BlockDevice, File, SdCard, Timestamp, VolumeIdx, VolumeMana
 // spi::{Spi, SpiMode},
 // timer::TimerGroup,
 // };
-use esp_hal::{dma_buffers, main, Blocking};
+use esp_hal::{dma_buffers, dma_circular_buffers, main, Blocking};
 use esp_hal::clock::CpuClock;
 use esp_hal::delay::Delay;
 use esp_hal::dma::DmaTransferTx;
@@ -181,8 +182,8 @@ impl embedded_sdmmc::TimeSource for DummyTime {
 }
 
 // ----------------- MAIN -----------------
-#[main]
-fn main() -> ! {
+#[esp_hal_embassy::main]
+async fn main(spawnerr: Spawner) -> ! {
 
     esp_println::logger::init_logger_from_env();
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
@@ -239,72 +240,46 @@ fn main() -> ! {
     let root_dir = volume.open_root_dir().unwrap();
 
     // Open your WAV file (8.3 name unless you enable long names)
-    let mut file = root_dir.open_file_in_dir(
-        "U2MYST.WAV", // "TEST.WAV" as 8.3 (pad with spaces)
+    let file = root_dir.open_file_in_dir(
+        "U2MYST.MP3",
         embedded_sdmmc::Mode::ReadOnly,
     ).unwrap();
 
-    info!("opened the file {:?}",file);
+    info!("opened the mp3 file {:?}",file);
 
     let mut decoder = nanomp3::Decoder::new();
-    // let mut mp3_buffer = Buffer::new(vec![0; 128*MIN_BUFFER_SIZE]);
-    let (_, _, tx_buffer, tx_descriptors) = dma_buffers!(0, CHUNK_BYTES*4);
+    let (_, _, tx_buffer, tx_descriptors) = dma_circular_buffers!(0, CHUNK_BYTES);
 
     // --- I2S0 TX to built-in speaker pins ---
-    let bclk = peripherals.GPIO7;
-    let ws   = peripherals.GPIO5;
-    let dout = peripherals.GPIO6;
-
     let i2s = I2s::new(peripherals.I2S0,
                        Standard::Philips,
                        DataFormat::Data16Channel16,
                        Rate::from_hz(44100),
                        peripherals.DMA_CH0,
     );
-    let mut i2s_tx = i2s.i2s_tx.with_bclk(bclk).with_ws(ws).with_dout(dout).build(tx_descriptors);
-    // let tx_pins = PinsBclkWsDout::new(bclk, ws, dout);
-
-
-    // let (a, b) = (&mut DMA_BUF_A.0, &mut DMA_BUF_B.0);
-    let mut a = [0u32; CHUNK_BYTES/4];
-    let mut filler = [0u8; CHUNK_BYTES];
-    // let len = fill_frames_from_sd(&mut file, &mut a, &wav);
-    // info!("read len {}",len);
-    // info!("size of filler = {}", filler.len());
-    // info!("tx buffer is {}", tx_buffer.len());
-    // info!("CHUNK_BYTES is {}", CHUNK_BYTES);
+    let mut i2s_tx = i2s.into_async()
+        .i2s_tx
+        .with_bclk(peripherals.GPIO7)
+        .with_ws(peripherals.GPIO5)
+        .with_dout(peripherals.GPIO6)
+        .build(tx_descriptors);
 
     let mut pcm_buffer = [0f32; nanomp3::MAX_SAMPLES_PER_FRAME];
-    // let mut file_data = [0u32; CHUNK_BYTES];
     let mut file_data = [0u8; CHUNK_BYTES];
-    // if file.is_eof() {
-    //     info!("end of file");
-        // file.seek_from_start(WAV_HEADER_LEN as u32).unwrap();
-    // }
 
-
-    let mut transaction = i2s_tx.write_dma_circular(&tx_buffer).unwrap();
+    let mut transaction = i2s_tx.write_dma_circular_async(tx_buffer).unwrap();
     loop {
-        let avail = transaction.available().unwrap();
-        if avail > CHUNK_BYTES {
-            // read from sd to file data
+        transaction.push_with(|dma_buf| {
+            // read a chunk of bytes from SD card
             let n = file.read(&mut file_data).unwrap_or(0);
             // decode mp3 data into the pcm buffer
             let (consumed, info) = decoder.decode(&file_data, &mut pcm_buffer);
+            info!("read out {} bytes",consumed);
             // copy decoded pcm data into the filler buffer
-            for (dest_c, source_e) in filler.chunks_exact_mut(4).zip(pcm_buffer.iter()) {
-                dest_c.copy_from_slice(&source_e.to_le_bytes())
+            for (dest_byte, source_f32) in dma_buf.chunks_exact_mut(4).zip(pcm_buffer.iter()) {
+                dest_byte.copy_from_slice(&source_f32.to_le_bytes())
             }
-            // send the data over DMA
-            match transaction.push(&filler) {
-                Ok(written) => {
-                    info!("wrote {}",written);
-                }
-                Err(e) => {
-                    error!("{:?}",e);
-                }
-            }
-        }
-        delay.delay_millis(1);
+            n
+        }).await.unwrap();
     }
 }

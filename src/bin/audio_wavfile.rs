@@ -271,12 +271,7 @@ async fn main(spawner: Spawner) {
 
     // create temp buffers
     let mut file_buffer = [0u32; CHUNK_BYTES/2];
-    let mut filler = [0u8; CHUNK_BYTES];
 
-    // pre-fill from file into &a buffer, using settings from &wav
-    // let len = fill_frames_from_sd(&mut file, &mut file_buffer, &wav);
-    // info!("read len {}",len);
-    info!("size of filler = {}", filler.len());
     info!("tx buffer is {}", tx_buffer.len());
     info!("CHUNK_BYTES is {}", CHUNK_BYTES);
 
