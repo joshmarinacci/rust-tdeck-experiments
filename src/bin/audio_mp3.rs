@@ -190,7 +190,7 @@ async fn main(spawnerr: Spawner) -> ! {
     let peripherals = esp_hal::init(config);
     let timer_g1 = TimerGroup::new(peripherals.TIMG1);
     esp_hal_embassy::init(timer_g1.timer0);
-    esp_alloc::heap_allocator!(size: 72 * 1024);
+    esp_alloc::heap_allocator!(size: 96 * 1024);
     let delay = Delay::new();
 
     info!("powering on");
@@ -272,20 +272,35 @@ async fn main(spawnerr: Spawner) -> ! {
 
     let mut pcm_buffer = [0f32; nanomp3::MAX_SAMPLES_PER_FRAME];
     let mut file_data = [0u8; CHUNK_BYTES];
-
+    
+    // read a chunk of bytes from SD card
+    let n = file.read(&mut file_data).unwrap_or(0);
+    info!("read file bytes {}, total len {}",n, file_data.len());
+    // decode mp3 data into the pcm buffer
+    let (consumed, nfo) = decoder.decode(&file_data, &mut pcm_buffer);
+    info!("read out {} bytes {:?}",consumed, nfo);
+    let mut start = 0;
+    let mut end = 0;
+    if let Some(nfo) = nfo {
+        info!("bitrate {} channels {} sample rate {} samples_produced {}",nfo.bitrate, nfo.channels.num(), nfo.sample_rate, nfo.samples_produced);
+        let sample_len = nfo.samples_produced * (nfo.channels.num() as usize);
+        end = sample_len;
+    } else {
+        end = 0;
+    }
     let mut transaction = i2s_tx.write_dma_circular_async(tx_buffer).unwrap();
     loop {
         transaction.push_with(|dma_buf| {
-            // read a chunk of bytes from SD card
-            let n = file.read(&mut file_data).unwrap_or(0);
-            // decode mp3 data into the pcm buffer
-            let (consumed, info) = decoder.decode(&file_data, &mut pcm_buffer);
-            info!("read out {} bytes",consumed);
-            // copy decoded pcm data into the filler buffer
-            for (dest_byte, source_f32) in dma_buf.chunks_exact_mut(4).zip(pcm_buffer.iter()) {
+            let mut end = end;
+            if dma_buf.len() < end/4 {
+                end = dma_buf.len()*4;
+            }
+            let slice = &pcm_buffer[start..end];
+            info!("copying slice {} to dma_buf {}",slice.len(), dma_buf.len());
+            for (dest_byte, source_f32) in dma_buf.chunks_exact_mut(4).zip(slice.iter()) {
                 dest_byte.copy_from_slice(&source_f32.to_le_bytes())
             }
-            n
+            dma_buf.len()
         }).await.unwrap();
     }
 }

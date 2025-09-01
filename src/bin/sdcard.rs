@@ -9,8 +9,11 @@ this doesn't work yet
     holding buffers for the duration of a data transfer."
 )]
 
+use alloc::rc::Rc;
 use alloc::string::String;
-use embedded_hal_bus::spi::ExclusiveDevice;
+use core::cell::RefCell;
+// use embedded_hal_bus::spi::ExclusiveDevice;
+use embedded_hal_bus::spi::RefCellDevice;
 use embedded_sdmmc::Mode::ReadOnly;
 use embedded_sdmmc::{SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager};
 use esp_hal::clock::CpuClock;
@@ -91,8 +94,14 @@ fn main() -> ! {
     .with_sck(board_spi_sck)
     .with_miso(board_spi_miso)
     .with_mosi(board_spi_mosi);
-    let sdmmc_spi =
-        ExclusiveDevice::new_no_delay(sdmmc_spi_bus, sdmmc_cs).expect("Failed to create SpiDevice");
+
+    // let sdmmc_spi = SpiDevice::new(sdmmc_spi_bus, sdmmc_cs);
+    let spi_delay = Delay::new();
+    let sdmmc_spi_bus = RefCell::new(sdmmc_spi_bus);
+    let sdmmc_spi = RefCellDevice::new(&sdmmc_spi_bus,sdmmc_cs, spi_delay).expect("failed to create spi device");
+
+    // let sdmmc_spi =
+    //     ExclusiveDevice::new_no_delay(sdmmc_spi_bus, sdmmc_cs).expect("Failed to create SpiDevice");
     info!("open the card");
     let card = SdCard::new(sdmmc_spi, delay);
     info!("size of card in bytes: {}",card.num_bytes().unwrap());

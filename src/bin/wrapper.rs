@@ -16,6 +16,8 @@ use embedded_graphics::pixelcolor::{Rgb565, RgbColor};
 use embedded_graphics::prelude::DrawTarget;
 use embedded_graphics::text::Text;
 use embedded_hal_bus::spi::ExclusiveDevice;
+use embedded_sdmmc::{TimeSource, Timestamp, VolumeIdx, VolumeManager};
+use embedded_sdmmc::Mode::ReadOnly;
 use esp_hal::clock::CpuClock;
 use esp_hal::{main, Blocking};
 use esp_hal::analog::adc::{Adc, AdcConfig, AdcPin, Attenuation};
@@ -56,6 +58,28 @@ fn main() -> ! {
     esp_alloc::heap_allocator!(size: 72 * 1024);
 
     info!("running");
+
+    // info!("size of card in bytes: {}",wrapper.sdcard.num_bytes().unwrap());
+    // info!("type of card: {:?}",wrapper.sdcard.get_card_type());
+    info!("opening the volume manager");
+    info!("getting volume 0");
+    match wrapper.volume_mgr.open_volume(VolumeIdx(0)) {
+        Ok(volume) => {
+            info!("opened the volume {:?}", volume);
+            let root_dir = volume.open_root_dir().unwrap();
+            info!("root dir is {:?}",root_dir);
+            root_dir
+                .iterate_dir(|de| {
+                    info!("dir entry {:?} is {} bytes", de.name, de.size);
+                })
+                .unwrap();
+            root_dir.close().unwrap();
+            volume.close().unwrap();
+        }
+        Err(err) => {
+            info!("failed to open the volume {:?}", err);
+        }
+    }
 
     loop {
         info!("Hello world!");

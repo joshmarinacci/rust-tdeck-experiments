@@ -6,7 +6,9 @@ use esp_hal::peripherals::{ADC1, GPIO4};
 extern crate alloc;
 
 use alloc::string::String;
-use embedded_hal_bus::spi::ExclusiveDevice;
+use core::cell::RefCell;
+use embedded_hal_bus::spi::{ExclusiveDevice, RefCellDevice};
+use embedded_sdmmc::{SdCard, TimeSource, Timestamp, VolumeManager};
 use esp_hal::analog::adc::{Adc, AdcConfig, AdcPin, Attenuation};
 use esp_hal::delay::Delay;
 use esp_hal::gpio::Level::{High, Low};
@@ -30,7 +32,7 @@ pub struct Wrapper {
     pub display: Display<
         SpiInterface<
             'static,
-            ExclusiveDevice<Spi<'static, Blocking>, Output<'static>, Delay>,
+            RefCellDevice<'static, Spi<'static, Blocking>, Output<'static>, Delay>,
             Output<'static>,
         >,
         ST7789,
@@ -46,6 +48,7 @@ pub struct Wrapper {
     pub down:TrackballPin,
     pub click:TrackballPin,
     pub touch:Gt911Blocking<I2c<'static, Blocking>>,
+    pub volume_mgr: VolumeManager<SdCard<RefCellDevice<'static, Spi<'static, Blocking>,Output<'static>, Delay>,Delay>, DummyTimesource>,
 }
 
 pub struct TrackballPin {
@@ -100,6 +103,26 @@ impl Wrapper {
     }
 }
 
+static SPI_BUS:StaticCell<RefCell<Spi<Blocking>>> = StaticCell::new();
+
+
+pub struct DummyTimesource();
+
+impl TimeSource for DummyTimesource {
+    // In theory you could use the RTC of the rp2040 here, if you had
+    // any external time synchronizing device.
+    fn get_timestamp(&self) -> Timestamp {
+        Timestamp {
+            year_since_1970: 0,
+            zero_indexed_month: 0,
+            zero_indexed_day: 0,
+            hours: 0,
+            minutes: 0,
+            seconds: 0,
+        }
+    }
+}
+
 impl Wrapper {
     pub fn init(peripherals: Peripherals) -> Wrapper {
         let mut delay = Delay::new();
@@ -132,11 +155,16 @@ impl Wrapper {
 
         info!("setting up the display");
         let spi_delay = Delay::new();
-        let spi_device = ExclusiveDevice::new(spi, tft_cs, spi_delay).unwrap();
+        // let spi_device = ExclusiveDevice::new(spi, tft_cs, spi_delay).unwrap();
+        let shared_spi_bus = RefCell::new(spi);
+        let shared_spi_bus = SPI_BUS.init(shared_spi_bus);
+
+
+        let tft_device = RefCellDevice::new(shared_spi_bus, tft_cs, spi_delay).expect("failed to create spi device");
         // let mut buffer = [0u8; 512];
         static DISPLAY_BUF: StaticCell<[u8; 512]> = StaticCell::new();
         let buffer = DISPLAY_BUF.init([0u8; 512]);
-        let di = SpiInterface::new(spi_device, tft_dc, buffer);
+        let di = SpiInterface::new(tft_device, tft_dc, buffer);
         info!("building");
         let display = Builder::new(ST7789, di)
             .display_size(240, 320)
@@ -147,6 +175,12 @@ impl Wrapper {
             .unwrap();
 
         info!("initialized display");
+
+        let BOARD_SDCARD_CS = peripherals.GPIO39;
+        let sdmmc_cs = Output::new(BOARD_SDCARD_CS, High, OutputConfig::default());
+        let sdcard_device = RefCellDevice::new(shared_spi_bus, sdmmc_cs, spi_delay).expect("failed to create spi device");
+        let sdcard = SdCard::new(sdcard_device, delay);
+        let mut volume_mgr = VolumeManager::new(sdcard, DummyTimesource {});
 
         // initialize keyboard
         let mut i2c = I2c::new(
@@ -174,6 +208,7 @@ impl Wrapper {
             i2c,
             delay,
             touch,
+            volume_mgr,
             adc: Adc::new(peripherals.ADC1, adc_config),
             battery_pin: pin,
             left: TrackballPin {
