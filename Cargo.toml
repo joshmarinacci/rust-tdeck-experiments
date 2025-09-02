@@ -13,12 +13,12 @@ blocking-network-stack = { git = "https://github.com/bjoernQ/blocking-network-st
 embedded-graphics = "0.8.1"
 embedded-hal-bus = "0.3.0"
 esp-alloc = "0.8.0"
-esp-bootloader-esp-idf = "0.1.0"
+esp-bootloader-esp-idf = {  version = "0.2.0" , features = ["esp32s3"]}
 esp-hal = { version = "1.0.0-rc.0", features = ["esp32s3", "unstable","log-04"] }
 mipidsi = "0.9.0"
 esp-println = { version = "0.15.0", features = ["esp32s3", "log-04"] }
 esp-wifi = { version = "0.15.0", features = ["esp32s3", "wifi", "smoltcp"]}
-log = { version = "0.4.21" }
+log = { version = "0.4.27" }
 smoltcp = { version = "0.12.0", default-features = false, features = ['medium-ethernet','socket-raw']}
 embedded-sdmmc = {  version = "0.9.0", features = ["log"] }
 gt911 = "0.3.0"
@@ -30,7 +30,7 @@ esp-storage = {  version="0.7.0", features = ["esp32s3"] }
 embedded-storage = "0.3.1"
 byteorder = {  version = "1.5.0", default-features = false }
 heapless = "0.8.0"
-static_cell = { version = "2.1.0", features = ["nightly"] }
+static_cell = { version = "2.1.1", features = ["nightly"] }
 nanomp3 = {  version="0.1.1" }
 embassy-time = "0.4.0"
 
