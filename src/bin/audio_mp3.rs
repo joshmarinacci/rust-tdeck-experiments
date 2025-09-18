@@ -17,16 +17,16 @@ use embedded_sdmmc::{BlockDevice, File, SdCard, Timestamp, VolumeIdx, VolumeMana
 // spi::{Spi, SpiMode},
 // timer::TimerGroup,
 // };
-use esp_hal::{dma_buffers, dma_circular_buffers, main, Blocking};
 use esp_hal::clock::CpuClock;
 use esp_hal::delay::Delay;
 use esp_hal::dma::DmaTransferTx;
 use esp_hal::gpio::Level::High;
 use esp_hal::gpio::{Input, InputConfig, Output, OutputConfig, Pull};
 use esp_hal::i2s::master::{DataFormat, Error, I2s, I2sTx, Standard};
-use esp_hal::time::Rate;
 use esp_hal::spi::master::{Config as SpiConfig, Spi};
+use esp_hal::time::Rate;
 use esp_hal::timer::timg::TimerGroup;
+use esp_hal::{dma_buffers, dma_circular_buffers, main, Blocking};
 use heapless::spsc::Queue;
 // use panic_halt as _;
 use log::{error, info};
@@ -69,18 +69,20 @@ static mut Q_STORAGE: MaybeUninit<Queue<u8, 4>> = MaybeUninit::uninit();
 // ---------- WAV info ----------
 #[derive(Clone, Copy, Debug)]
 struct WavInfo {
-    audio_format: u16,   // 1 = PCM
-    num_channels: u16,   // 1 or 2
+    audio_format: u16, // 1 = PCM
+    num_channels: u16, // 1 or 2
     sample_rate: u32,
-    bits_per_sample: u16,// 16
-    data_size: u32,      // bytes
-    block_align: u16,    // bytes per frame (channels * bits/8)
+    bits_per_sample: u16, // 16
+    data_size: u32,       // bytes
+    block_align: u16,     // bytes per frame (channels * bits/8)
 }
 
 // Minimal parser for 16-bit PCM, finds the "fmt " & "data" chunks in the 44B header
 fn parse_wav_header(h: &[u8]) -> Option<WavInfo> {
     use byteorder::{ByteOrder, LittleEndian as LE};
-    if h.len() < 44 || &h[0..4] != b"RIFF" || &h[8..12] != b"WAVE" { return None; }
+    if h.len() < 44 || &h[0..4] != b"RIFF" || &h[8..12] != b"WAVE" {
+        return None;
+    }
 
     let mut p = 12usize;
     let mut fmt_found = false;
@@ -92,18 +94,18 @@ fn parse_wav_header(h: &[u8]) -> Option<WavInfo> {
     let mut data_size = 0u32;
 
     while p + 8 <= h.len() {
-        let id = &h[p..p+4];
-        let sz = LE::read_u32(&h[p+4..p+8]) as usize;
+        let id = &h[p..p + 4];
+        let sz = LE::read_u32(&h[p + 4..p + 8]) as usize;
         let body = p + 8;
         let next = body + sz;
 
         if id == b"fmt " && body + 16 <= h.len() {
-            audio_format     = LE::read_u16(&h[body..body+2]);
-            num_channels     = LE::read_u16(&h[body+2..body+4]);
-            sample_rate      = LE::read_u32(&h[body+4..body+8]);
-            let _byte_rate   = LE::read_u32(&h[body+8..body+12]);
-            block_align      = LE::read_u16(&h[body+12..body+14]);
-            bits_per_sample  = LE::read_u16(&h[body+14..body+16]);
+            audio_format = LE::read_u16(&h[body..body + 2]);
+            num_channels = LE::read_u16(&h[body + 2..body + 4]);
+            sample_rate = LE::read_u32(&h[body + 4..body + 8]);
+            let _byte_rate = LE::read_u32(&h[body + 8..body + 12]);
+            block_align = LE::read_u16(&h[body + 12..body + 14]);
+            bits_per_sample = LE::read_u16(&h[body + 14..body + 16]);
             fmt_found = true;
         } else if id == b"data" {
             data_size = (sz as u32);
@@ -113,15 +115,28 @@ fn parse_wav_header(h: &[u8]) -> Option<WavInfo> {
         p = next + (next & 1);
     }
 
-    if !fmt_found || data_size == 0 { return None; }
+    if !fmt_found || data_size == 0 {
+        return None;
+    }
     Some(WavInfo {
-        audio_format, num_channels, sample_rate, bits_per_sample, data_size, block_align
+        audio_format,
+        num_channels,
+        sample_rate,
+        bits_per_sample,
+        data_size,
+        block_align,
     })
 }
 
 // Read PCM bytes from SD and pack to u32 I2S frames (L: high 16, R: low 16)
 fn fill_frames_from_sd(
-    file: &mut File<SdCard<ExclusiveDevice<Spi<Blocking>, Output, NoDelay>, Delay>, DummyTime, 4,4,1>,
+    file: &mut File<
+        SdCard<ExclusiveDevice<Spi<Blocking>, Output, NoDelay>, Delay>,
+        DummyTime,
+        4,
+        4,
+        1,
+    >,
     out_frames: &mut [u32],
     w: &WavInfo,
 ) -> usize {
@@ -141,16 +156,18 @@ fn fill_frames_from_sd(
         file.seek_from_start(WAV_HEADER_LEN as u32).unwrap();
     }
     let n = file.read(&mut tmp[..to_read]).unwrap_or(0);
-    if n == 0 { return 0; }
+    if n == 0 {
+        return 0;
+    }
 
     let mut produced = 0usize;
     let mut i = 0usize;
     while i + bytes_per_sample * ch <= n && produced < out_frames.len() {
         // 16-bit little-endian
-        let l = i16::from_le_bytes([tmp[i], tmp[i+1]]) as i32;
+        let l = i16::from_le_bytes([tmp[i], tmp[i + 1]]) as i32;
         let r = if ch == 2 {
             let j = i + 2;
-            i16::from_le_bytes([tmp[j], tmp[j+1]]) as i32
+            i16::from_le_bytes([tmp[j], tmp[j + 1]]) as i32
         } else {
             l
         };
@@ -184,7 +201,6 @@ impl embedded_sdmmc::TimeSource for DummyTime {
 // ----------------- MAIN -----------------
 #[esp_hal_embassy::main]
 async fn main(spawnerr: Spawner) -> ! {
-
     esp_println::logger::init_logger_from_env();
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
@@ -217,23 +233,24 @@ async fn main(spawnerr: Spawner) -> ! {
     let radio_cs = Output::new(RADIO_CS_PIN, High, OutputConfig::default());
     let board_tft = Output::new(BOARD_TFT_CS, High, OutputConfig::default());
 
-    let sdmmc_spi_bus = Spi::new(peripherals.SPI2,
-                                 SpiConfig::default().with_frequency(Rate::from_mhz(40)),
-    ).unwrap()
-        .with_sck(BOARD_SPI_SCK)
-        .with_mosi(BOARD_SPI_MOSI)
-        .with_miso(BOARD_SPI_MISO);
+    let sdmmc_spi_bus = Spi::new(
+        peripherals.SPI2,
+        SpiConfig::default().with_frequency(Rate::from_mhz(40)),
+    )
+    .unwrap()
+    .with_sck(BOARD_SPI_SCK)
+    .with_mosi(BOARD_SPI_MOSI)
+    .with_miso(BOARD_SPI_MISO);
     let sdmmc_spi =
         ExclusiveDevice::new_no_delay(sdmmc_spi_bus, sdmmc_cs).expect("Failed to create SpiDevice");
-
 
     info!("setting up SD CARD");
 
     let card = SdCard::new(sdmmc_spi, delay);
-    info!("size of card in bytes: {}",card.num_bytes().unwrap());
-    info!("type of card: {:?}",card.get_card_type());
+    info!("size of card in bytes: {}", card.num_bytes().unwrap());
+    info!("type of card: {:?}", card.get_card_type());
     info!("opening volume manager");
-    let mut volume_mgr = VolumeManager::new(card, DummyTime{});
+    let mut volume_mgr = VolumeManager::new(card, DummyTime {});
     info!("opening volume");
     let mut volume = volume_mgr.open_volume(VolumeIdx(0)).unwrap();
     info!("opening root dir");
@@ -246,24 +263,25 @@ async fn main(spawnerr: Spawner) -> ! {
         .unwrap();
 
     // Open your WAV file (8.3 name unless you enable long names)
-    let file = root_dir.open_file_in_dir(
-        "U2NONAME.MP3",
-        embedded_sdmmc::Mode::ReadOnly,
-    ).unwrap();
+    let file = root_dir
+        .open_file_in_dir("U2NONAME.MP3", embedded_sdmmc::Mode::ReadOnly)
+        .unwrap();
 
-    info!("opened the mp3 file {:?}",file);
+    info!("opened the mp3 file {:?}", file);
 
     let mut decoder = nanomp3::Decoder::new();
     let (_, _, tx_buffer, tx_descriptors) = dma_circular_buffers!(0, CHUNK_BYTES);
 
     // --- I2S0 TX to built-in speaker pins ---
-    let i2s = I2s::new(peripherals.I2S0,
-                       Standard::Philips,
-                       DataFormat::Data16Channel16,
-                       Rate::from_hz(44100),
-                       peripherals.DMA_CH0,
+    let i2s = I2s::new(
+        peripherals.I2S0,
+        Standard::Philips,
+        DataFormat::Data16Channel16,
+        Rate::from_hz(44100),
+        peripherals.DMA_CH0,
     );
-    let mut i2s_tx = i2s.into_async()
+    let mut i2s_tx = i2s
+        .into_async()
         .i2s_tx
         .with_bclk(peripherals.GPIO7)
         .with_ws(peripherals.GPIO5)
@@ -272,17 +290,23 @@ async fn main(spawnerr: Spawner) -> ! {
 
     let mut pcm_buffer = [0f32; nanomp3::MAX_SAMPLES_PER_FRAME];
     let mut file_data = [0u8; CHUNK_BYTES];
-    
+
     // read a chunk of bytes from SD card
     let n = file.read(&mut file_data).unwrap_or(0);
-    info!("read file bytes {}, total len {}",n, file_data.len());
+    info!("read file bytes {}, total len {}", n, file_data.len());
     // decode mp3 data into the pcm buffer
     let (consumed, nfo) = decoder.decode(&file_data, &mut pcm_buffer);
-    info!("read out {} bytes {:?}",consumed, nfo);
+    info!("read out {} bytes {:?}", consumed, nfo);
     let mut start = 0;
     let mut end = 0;
     if let Some(nfo) = nfo {
-        info!("bitrate {} channels {} sample rate {} samples_produced {}",nfo.bitrate, nfo.channels.num(), nfo.sample_rate, nfo.samples_produced);
+        info!(
+            "bitrate {} channels {} sample rate {} samples_produced {}",
+            nfo.bitrate,
+            nfo.channels.num(),
+            nfo.sample_rate,
+            nfo.samples_produced
+        );
         let sample_len = nfo.samples_produced * (nfo.channels.num() as usize);
         end = sample_len;
     } else {
@@ -290,17 +314,20 @@ async fn main(spawnerr: Spawner) -> ! {
     }
     let mut transaction = i2s_tx.write_dma_circular_async(tx_buffer).unwrap();
     loop {
-        transaction.push_with(|dma_buf| {
-            let mut end = end;
-            if dma_buf.len() < end/4 {
-                end = dma_buf.len()*4;
-            }
-            let slice = &pcm_buffer[start..end];
-            info!("copying slice {} to dma_buf {}",slice.len(), dma_buf.len());
-            for (dest_byte, source_f32) in dma_buf.chunks_exact_mut(4).zip(slice.iter()) {
-                dest_byte.copy_from_slice(&source_f32.to_le_bytes())
-            }
-            dma_buf.len()
-        }).await.unwrap();
+        transaction
+            .push_with(|dma_buf| {
+                let mut end = end;
+                if dma_buf.len() < end / 4 {
+                    end = dma_buf.len() * 4;
+                }
+                let slice = &pcm_buffer[start..end];
+                info!("copying slice {} to dma_buf {}", slice.len(), dma_buf.len());
+                for (dest_byte, source_f32) in dma_buf.chunks_exact_mut(4).zip(slice.iter()) {
+                    dest_byte.copy_from_slice(&source_f32.to_le_bytes())
+                }
+                dma_buf.len()
+            })
+            .await
+            .unwrap();
     }
 }

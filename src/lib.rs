@@ -42,19 +42,22 @@ pub struct Wrapper {
     pub delay: Delay,
     adc: Adc<'static, ADC1<'static>, Blocking>,
     battery_pin: AdcPin<GPIO4<'static>, ADC1<'static>>,
-    pub left:TrackballPin,
-    pub right:TrackballPin,
-    pub up:TrackballPin,
-    pub down:TrackballPin,
-    pub click:TrackballPin,
-    pub touch:Gt911Blocking<I2c<'static, Blocking>>,
-    pub volume_mgr: VolumeManager<SdCard<RefCellDevice<'static, Spi<'static, Blocking>,Output<'static>, Delay>,Delay>, DummyTimesource>,
+    pub left: TrackballPin,
+    pub right: TrackballPin,
+    pub up: TrackballPin,
+    pub down: TrackballPin,
+    pub click: TrackballPin,
+    pub touch: Gt911Blocking<I2c<'static, Blocking>>,
+    pub volume_mgr: VolumeManager<
+        SdCard<RefCellDevice<'static, Spi<'static, Blocking>, Output<'static>, Delay>, Delay>,
+        DummyTimesource,
+    >,
 }
 
 pub struct TrackballPin {
-    pin:Input<'static>,
-    prev:bool,
-    pub changed:bool,
+    pin: Input<'static>,
+    prev: bool,
+    pub changed: bool,
 }
 impl TrackballPin {
     fn poll(&mut self) {
@@ -103,8 +106,7 @@ impl Wrapper {
     }
 }
 
-static SPI_BUS:StaticCell<RefCell<Spi<Blocking>>> = StaticCell::new();
-
+static SPI_BUS: StaticCell<RefCell<Spi<Blocking>>> = StaticCell::new();
 
 pub struct DummyTimesource();
 
@@ -159,8 +161,8 @@ impl Wrapper {
         let shared_spi_bus = RefCell::new(spi);
         let shared_spi_bus = SPI_BUS.init(shared_spi_bus);
 
-
-        let tft_device = RefCellDevice::new(shared_spi_bus, tft_cs, spi_delay).expect("failed to create spi device");
+        let tft_device = RefCellDevice::new(shared_spi_bus, tft_cs, spi_delay)
+            .expect("failed to create spi device");
         // let mut buffer = [0u8; 512];
         static DISPLAY_BUF: StaticCell<[u8; 512]> = StaticCell::new();
         let buffer = DISPLAY_BUF.init([0u8; 512]);
@@ -178,7 +180,8 @@ impl Wrapper {
 
         let BOARD_SDCARD_CS = peripherals.GPIO39;
         let sdmmc_cs = Output::new(BOARD_SDCARD_CS, High, OutputConfig::default());
-        let sdcard_device = RefCellDevice::new(shared_spi_bus, sdmmc_cs, spi_delay).expect("failed to create spi device");
+        let sdcard_device = RefCellDevice::new(shared_spi_bus, sdmmc_cs, spi_delay)
+            .expect("failed to create spi device");
         let sdcard = SdCard::new(sdcard_device, delay);
         let mut volume_mgr = VolumeManager::new(sdcard, DummyTimesource {});
 
@@ -198,7 +201,6 @@ impl Wrapper {
         let mut adc_config: AdcConfig<ADC1> = AdcConfig::new();
         let mut pin: AdcPin<GPIO4, ADC1> = adc_config.enable_pin(analog_pin, Attenuation::_11dB);
 
-
         let touch = Gt911Blocking::default();
         touch.init(&mut i2c).unwrap();
 
@@ -217,39 +219,39 @@ impl Wrapper {
                 pin: Input::new(
                     peripherals.GPIO1,
                     InputConfig::default().with_pull(Pull::Up),
-                )
+                ),
             },
             right: TrackballPin {
-                changed:false,
-                prev:false,
+                changed: false,
+                prev: false,
                 pin: Input::new(
                     peripherals.GPIO2,
                     InputConfig::default().with_pull(Pull::Up),
-                )
+                ),
             },
             up: TrackballPin {
-                changed:false,
-                prev:false,
+                changed: false,
+                prev: false,
                 pin: Input::new(
                     peripherals.GPIO3,
                     InputConfig::default().with_pull(Pull::Up),
-                )
+                ),
             },
             down: TrackballPin {
-                changed:false,
-                prev:false,
+                changed: false,
+                prev: false,
                 pin: Input::new(
                     peripherals.GPIO5,
                     InputConfig::default().with_pull(Pull::Up),
-                )
+                ),
             },
             click: TrackballPin {
-                changed:false,
-                prev:false,
+                changed: false,
+                prev: false,
                 pin: Input::new(
                     peripherals.GPIO0,
                     InputConfig::default().with_pull(Pull::Up),
-                )
+                ),
             },
             // trackball_click_input: Input::new(
             //     peripherals.GPIO0,

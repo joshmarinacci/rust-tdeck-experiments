@@ -6,35 +6,35 @@
     holding buffers for the duration of a data transfer."
 )]
 
-use esp_hal::peripherals::{GPIO4, ADC1};
 use alloc::string::String;
-use embedded_graphics::Drawable;
 use embedded_graphics::geometry::Point;
 use embedded_graphics::mono_font::ascii::FONT_6X10;
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::pixelcolor::{Rgb565, RgbColor};
 use embedded_graphics::prelude::DrawTarget;
 use embedded_graphics::text::Text;
+use embedded_graphics::Drawable;
 use embedded_hal_bus::spi::ExclusiveDevice;
-use embedded_sdmmc::{TimeSource, Timestamp, VolumeIdx, VolumeManager};
 use embedded_sdmmc::Mode::ReadOnly;
-use esp_hal::clock::CpuClock;
-use esp_hal::{main, Blocking};
+use embedded_sdmmc::{TimeSource, Timestamp, VolumeIdx, VolumeManager};
 use esp_hal::analog::adc::{Adc, AdcConfig, AdcPin, Attenuation};
+use esp_hal::clock::CpuClock;
 use esp_hal::delay::Delay;
 use esp_hal::gpio::Level::{High, Low};
 use esp_hal::gpio::{Input, InputConfig, Output, OutputConfig, Pull};
 use esp_hal::i2c::master::{BusTimeout, Config, I2c};
-use esp_hal::peripherals::{Peripherals};
+use esp_hal::peripherals::Peripherals;
+use esp_hal::peripherals::{ADC1, GPIO4};
 use esp_hal::spi::master::{Config as SpiConfig, Spi};
-use esp_hal::time::{Rate};
+use esp_hal::time::Rate;
+use esp_hal::{main, Blocking};
 use log::info;
-use mipidsi::{Builder, Display, NoResetPin};
 use mipidsi::interface::SpiInterface;
 use mipidsi::models::ST7789;
 use mipidsi::options::{ColorInversion, ColorOrder, Orientation, Rotation};
-use static_cell::StaticCell;
+use mipidsi::{Builder, Display, NoResetPin};
 use rust_tdeck_experiments::Wrapper;
+use static_cell::StaticCell;
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {
@@ -46,7 +46,6 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
 esp_bootloader_esp_idf::esp_app_desc!();
 
 extern crate alloc;
-
 
 #[main]
 fn main() -> ! {
@@ -67,7 +66,7 @@ fn main() -> ! {
         Ok(volume) => {
             info!("opened the volume {:?}", volume);
             let root_dir = volume.open_root_dir().unwrap();
-            info!("root dir is {:?}",root_dir);
+            info!("root dir is {:?}", root_dir);
             root_dir
                 .iterate_dir(|de| {
                     info!("dir entry {:?} is {} bytes", de.name, de.size);
@@ -95,7 +94,14 @@ fn main() -> ! {
         info!("battery is {}", wrapper.read_battery_level());
 
         wrapper.poll_trackball();
-        info!("moved {} {} {} {} {}", wrapper.right.changed, wrapper.left.changed, wrapper.up.changed, wrapper.down.changed, wrapper.click.changed);
+        info!(
+            "moved {} {} {} {} {}",
+            wrapper.right.changed,
+            wrapper.left.changed,
+            wrapper.up.changed,
+            wrapper.down.changed,
+            wrapper.click.changed
+        );
         if let Ok(points) = wrapper.poll_touchscreen() {
             // stack allocated Vec containing 0-5 points
             info!("{:?}", points)
