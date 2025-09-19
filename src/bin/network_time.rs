@@ -6,7 +6,7 @@
 //! This gets an ip address via DHCP then performs an SNTP request to update the RTC time with the
 //! response. The RTC time is then compared with the received data parsed with jiff.
 //! You can change the timezone to your local timezone.
-
+// copied from https://github.com/esp-rs/esp-hal/blob/main/examples/wifi/sntp/src/main.rs
 #![no_std]
 #![no_main]
 extern crate alloc;
