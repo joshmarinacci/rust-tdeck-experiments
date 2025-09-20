@@ -76,15 +76,15 @@ impl Iterator for SineWaveSource {
     fn next(&mut self) -> Option<Self::Item> {
         let i = self.i;
         self.i += 1;
-        let samp:f32 = ((i as f32)/10.0*0.8).sin() * (i16::MAX as f32) * 0.5;
+        let samp: f32 = ((i as f32) / 10.0 * 0.8).sin() * (i16::MAX as f32) * 0.5;
         Some(samp)
     }
 }
 
 struct SawtoothWaveSource {
-    phase: u32,      // 0..=u32::MAX wraps around (fixed-point phase)
-    step: u32,       // how much to advance per sample
-    amplitude: i16,  // max amplitude
+    phase: u32,     // 0..=u32::MAX wraps around (fixed-point phase)
+    step: u32,      // how much to advance per sample
+    amplitude: i16, // max amplitude
 }
 
 impl SawtoothWaveSource {
@@ -103,9 +103,8 @@ impl Iterator for SawtoothWaveSource {
     type Item = i16;
     fn next(&mut self) -> Option<i16> {
         let frac = self.phase >> 16; // use upper 16 bits as position (0..65535)
-        // Map 0..65535 → -amplitude..+amplitude
-        let val = (frac as i32 * (self.amplitude as i32 * 2) / 65536)
-            - self.amplitude as i32;
+                                     // Map 0..65535 → -amplitude..+amplitude
+        let val = (frac as i32 * (self.amplitude as i32 * 2) / 65536) - self.amplitude as i32;
 
         self.phase = self.phase.wrapping_add(self.step);
         Some(val as i16)
@@ -137,7 +136,7 @@ async fn main(spawner: Spawner) {
         Rate::from_hz(44100),
         dma_channel,
     )
-        .into_async();
+    .into_async();
 
     let i2s_tx = i2s
         .i2s_tx
@@ -152,17 +151,20 @@ async fn main(spawner: Spawner) {
     // let mut samples = SineWaveSource::new();
     let mut samples = SawtoothWaveSource::new(262, 44_100, i16::MAX / 4); // 440Hz, half volume
     loop {
-        let written = transaction.push_with(|buf| {
-            for i in (0..buf.len()).step_by(4) {
-                let samp = samples.next().unwrap();
-                let isamp = samp as u16;
-                buf[i+0] = (isamp & 0x00ff) as u8;
-                buf[i+1] = ((isamp & 0xff00) >> 8) as u8;
-                buf[i+2] = (isamp & 0x00ff) as u8;
-                buf[i+3] = ((isamp & 0xff00) >> 8) as u8;
-            }
-            buf.len()
-        }).await.unwrap();
+        let written = transaction
+            .push_with(|buf| {
+                for i in (0..buf.len()).step_by(4) {
+                    let samp = samples.next().unwrap();
+                    let isamp = samp as u16;
+                    buf[i + 0] = (isamp & 0x00ff) as u8;
+                    buf[i + 1] = ((isamp & 0xff00) >> 8) as u8;
+                    buf[i + 2] = (isamp & 0x00ff) as u8;
+                    buf[i + 3] = ((isamp & 0xff00) >> 8) as u8;
+                }
+                buf.len()
+            })
+            .await
+            .unwrap();
         info!("written {}", written);
         count += 1;
         if count >= 50 {

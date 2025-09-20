@@ -18,11 +18,11 @@ use embedded_sdmmc::Mode::ReadOnly;
 use embedded_sdmmc::{SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager};
 use esp_hal::clock::CpuClock;
 use esp_hal::delay::Delay;
-use esp_hal::gpio::Level::{High};
+use esp_hal::gpio::Level::High;
 use esp_hal::gpio::{Input, InputConfig, Output, OutputConfig, Pull};
+use esp_hal::main;
 use esp_hal::spi::master::{Config as SpiConfig, Spi};
 use esp_hal::time::{Duration, Instant, Rate};
-use esp_hal::{main};
 use log::info;
 
 #[panic_handler]
@@ -98,14 +98,15 @@ fn main() -> ! {
     // let sdmmc_spi = SpiDevice::new(sdmmc_spi_bus, sdmmc_cs);
     let spi_delay = Delay::new();
     let sdmmc_spi_bus = RefCell::new(sdmmc_spi_bus);
-    let sdmmc_spi = RefCellDevice::new(&sdmmc_spi_bus,sdmmc_cs, spi_delay).expect("failed to create spi device");
+    let sdmmc_spi = RefCellDevice::new(&sdmmc_spi_bus, sdmmc_cs, spi_delay)
+        .expect("failed to create spi device");
 
     // let sdmmc_spi =
     //     ExclusiveDevice::new_no_delay(sdmmc_spi_bus, sdmmc_cs).expect("Failed to create SpiDevice");
     info!("open the card");
     let card = SdCard::new(sdmmc_spi, delay);
-    info!("size of card in bytes: {}",card.num_bytes().unwrap());
-    info!("type of card: {:?}",card.get_card_type());
+    info!("size of card in bytes: {}", card.num_bytes().unwrap());
+    info!("type of card: {:?}", card.get_card_type());
     info!("opening the volume manager");
     let mut volume_mgr = VolumeManager::new(card, DummyTimesource {});
     info!("getting volume 0");
@@ -113,7 +114,7 @@ fn main() -> ! {
         Ok(volume) => {
             info!("opened the volume {:?}", volume);
             let root_dir = volume.open_root_dir().unwrap();
-            info!("root dir is {:?}",root_dir);
+            info!("root dir is {:?}", root_dir);
             root_dir
                 .iterate_dir(|de| {
                     info!("dir entry {:?} is {} bytes", de.name, de.size);

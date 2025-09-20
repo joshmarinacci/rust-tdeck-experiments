@@ -15,13 +15,12 @@ and prints out the partition table.
 )]
 
 use embedded_storage::ReadStorage;
+use esp_bootloader_esp_idf::partitions;
 use esp_hal::clock::CpuClock;
 use esp_hal::main;
 use esp_hal::time::{Duration, Instant};
-use log::info;
 use esp_storage::FlashStorage;
-use esp_bootloader_esp_idf::partitions;
-
+use log::info;
 
 #[panic_handler]
 fn panic(_: &core::panic::PanicInfo) -> ! {

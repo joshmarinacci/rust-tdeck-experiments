@@ -55,22 +55,22 @@ fn main() -> ! {
     // ==== display setup ====
     // https://github.com/Xinyuan-LilyGO/T-Deck/blob/master/examples/HelloWorld/HelloWorld.ino
 
-    let mut TFT_CS = Output::new(peripherals.GPIO12, High,
-                                 OutputConfig::default());
+    let mut TFT_CS = Output::new(peripherals.GPIO12, High, OutputConfig::default());
     TFT_CS.set_high();
-    let tft_dc = Output::new(peripherals.GPIO11, Low,
-                             OutputConfig::default());
-    let mut tft_enable = Output::new(peripherals.GPIO42, High,
-                                     OutputConfig::default());
+    let tft_dc = Output::new(peripherals.GPIO11, Low, OutputConfig::default());
+    let mut tft_enable = Output::new(peripherals.GPIO42, High, OutputConfig::default());
     tft_enable.set_high();
 
     let spi = Spi::new(
         peripherals.SPI2,
         SpiConfig::default().with_frequency(Rate::from_mhz(40)),
-    ).unwrap()
+    )
+    .unwrap()
     .with_sck(peripherals.GPIO40)
-    .with_miso(Input::new(peripherals.GPIO38,
-                          InputConfig::default().with_pull(Pull::Up)))
+    .with_miso(Input::new(
+        peripherals.GPIO38,
+        InputConfig::default().with_pull(Pull::Up),
+    ))
     .with_mosi(peripherals.GPIO41);
 
     let mut buffer = [0u8; 512];

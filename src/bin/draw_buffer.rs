@@ -11,20 +11,20 @@ use esp_hal::clock::CpuClock;
 use esp_hal::delay::Delay;
 use esp_hal::gpio::Level::{High, Low};
 use esp_hal::gpio::{Input, InputConfig, Output, OutputConfig, Pull};
-use esp_hal::{main, Blocking};
 use esp_hal::spi::master::{Config as SpiConfig, Spi};
 use esp_hal::time::{Duration, Instant, Rate};
+use esp_hal::{main, Blocking};
 use log::info;
 
+use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
 use embedded_graphics::{
     mono_font::{ascii::FONT_6X10, MonoTextStyle},
     pixelcolor::Rgb565,
     prelude::*,
     text::Text,
 };
-use embedded_graphics::primitives::{PrimitiveStyle, Rectangle};
-use embedded_sdmmc::{SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager};
 use embedded_sdmmc::Mode::{ReadWriteCreateOrAppend, ReadWriteCreateOrTruncate};
+use embedded_sdmmc::{SdCard, TimeSource, Timestamp, VolumeIdx, VolumeManager};
 use mipidsi::interface::SpiInterface;
 use mipidsi::options::{ColorInversion, ColorOrder, Orientation, Rotation};
 use mipidsi::{models::ST7789, Builder, Display, NoResetPin};
@@ -76,21 +76,20 @@ fn main() -> ! {
     let sdmmc_spi_bus = Spi::new(
         peripherals.SPI2,
         SpiConfig::default().with_frequency(Rate::from_mhz(40)), // .with_mode()
-        // .with_clock_source(SpiClockSource::LSI)
+                                                                 // .with_clock_source(SpiClockSource::LSI)
     )
-        .unwrap()
-        .with_sck(board_spi_sck)
-        .with_miso(board_spi_miso)
-        .with_mosi(board_spi_mosi);
+    .unwrap()
+    .with_sck(board_spi_sck)
+    .with_miso(board_spi_miso)
+    .with_mosi(board_spi_mosi);
     let sdmmc_spi =
         ExclusiveDevice::new_no_delay(sdmmc_spi_bus, sdmmc_cs).expect("Failed to create SpiDevice");
     info!("open the card");
     let card = SdCard::new(sdmmc_spi, delay);
 
-
     info!("initialized display");
 
-    let mut volume_mgr = VolumeManager::new(card, DummyTimesource{}); // Use your TimeSource
+    let mut volume_mgr = VolumeManager::new(card, DummyTimesource {}); // Use your TimeSource
 
     info!("drawing to buffer");
     draw_to_buffer(&mut volume_mgr);
@@ -103,12 +102,12 @@ fn main() -> ! {
 }
 
 struct ExampleDisplay {
-    framebuffer: [u8; 20*20*3],
+    framebuffer: [u8; 20 * 20 * 3],
 }
 
 impl OriginDimensions for ExampleDisplay {
     fn size(&self) -> Size {
-        Size::new(20,20)
+        Size::new(20, 20)
     }
 }
 impl DrawTarget for ExampleDisplay {
@@ -117,31 +116,37 @@ impl DrawTarget for ExampleDisplay {
 
     fn draw_iter<I>(&mut self, pixels: I) -> Result<(), Self::Error>
     where
-        I: IntoIterator<Item=Pixel<Self::Color>>
+        I: IntoIterator<Item = Pixel<Self::Color>>,
     {
         for Pixel(coord, color) in pixels.into_iter() {
             let width = self.size().width;
             let height = self.size().height;
             let x = coord.x as u32;
             let y = coord.y as u32;
-            let index: u32 = (x + y * width)*3;
-            self.framebuffer[(index+0) as usize] = color.r()<<3;
-            self.framebuffer[(index+1) as usize] = color.g()<<2;
-            self.framebuffer[(index+2) as usize] = color.b()<<3;
+            let index: u32 = (x + y * width) * 3;
+            self.framebuffer[(index + 0) as usize] = color.r() << 3;
+            self.framebuffer[(index + 1) as usize] = color.g() << 2;
+            self.framebuffer[(index + 2) as usize] = color.b() << 3;
         }
         Ok(())
     }
 }
-fn draw_to_buffer(volume_mgr: &mut VolumeManager<SdCard<ExclusiveDevice<Spi<Blocking>, Output, NoDelay>, Delay>, DummyTimesource>) {
-    const WIDTH:usize = 20;
-    const HEIGHT:usize = 20;
+fn draw_to_buffer(
+    volume_mgr: &mut VolumeManager<
+        SdCard<ExclusiveDevice<Spi<Blocking>, Output, NoDelay>, Delay>,
+        DummyTimesource,
+    >,
+) {
+    const WIDTH: usize = 20;
+    const HEIGHT: usize = 20;
     let mut buffer = ExampleDisplay {
-        framebuffer: [0; WIDTH*HEIGHT*3]
+        framebuffer: [0; WIDTH * HEIGHT * 3],
     };
-    Rectangle::new(Point::new(0,0), Size::new(10,10))
+    Rectangle::new(Point::new(0, 0), Size::new(10, 10))
         .into_styled(PrimitiveStyle::with_fill(Rgb565::MAGENTA))
-        .draw(&mut buffer).unwrap();
-    info!("the first few pixels are {:?}", &buffer.framebuffer[0 .. 10]);
+        .draw(&mut buffer)
+        .unwrap();
+    info!("the first few pixels are {:?}", &buffer.framebuffer[0..10]);
 
     info!("Making a bmp");
     // --- BMP Encoding and Writing ---
@@ -173,26 +178,27 @@ fn draw_to_buffer(volume_mgr: &mut VolumeManager<SdCard<ExclusiveDevice<Spi<Bloc
 
         info!("turning into a vec");
         dummy_bmp_data.to_vec() // Convert to Vec<u8> (requires alloc feature)
-        // Or use a fixed-size buffer if alloc is not available
+                                // Or use a fixed-size buffer if alloc is not available
     };
 
-    info!("prepared a bmp file");// {:?}", bmp_bytes);
-
+    info!("prepared a bmp file"); // {:?}", bmp_bytes);
 
     info!("opening volume");
     let vol = volume_mgr.open_volume(VolumeIdx(0)).unwrap();
     info!("opening root dir");
     let root = vol.open_root_dir().unwrap();
-    let file = root.open_file_in_dir("IMAGE.BMP",ReadWriteCreateOrTruncate).unwrap();
+    let file = root
+        .open_file_in_dir("IMAGE.BMP", ReadWriteCreateOrTruncate)
+        .unwrap();
     match file.write(&bmp_bytes) {
         Ok(_) => {
             info!("wrote out IMAGE.BMP");
             // Success!
             // You might want to flush the file here, embedded-sdmmc handles flushing on close.
             file.close().unwrap();
-        },
+        }
         Err(e) => {
-            info!("error writing image {:?}",e);
+            info!("error writing image {:?}", e);
             // Handle write error
             // log::error!("Failed to write BMP data: {:?}", e);
         }

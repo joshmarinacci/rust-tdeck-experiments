@@ -6,13 +6,13 @@
     holding buffers for the duration of a data transfer."
 )]
 
-use core::default::Default;
 use alloc::vec;
 use alloc::vec::Vec;
-use embedded_graphics::*;
-use embedded_graphics::primitives::*;
+use core::default::Default;
 use embedded_graphics::pixelcolor::Rgb565;
 use embedded_graphics::prelude::*;
+use embedded_graphics::primitives::*;
+use embedded_graphics::*;
 use esp_hal::clock::CpuClock;
 use esp_hal::{main, Config};
 use log::info;
@@ -28,7 +28,6 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
 // This creates a default app-descriptor required by the esp-idf bootloader.
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
-
 
 pub struct Brick {
     pub bounds: Rectangle,
@@ -47,12 +46,20 @@ pub struct GameView {
 }
 impl GameView {
     pub fn new() -> Self {
-        let colors = [Rgb565::GREEN, Rgb565::YELLOW, Rgb565::CSS_ORANGE, Rgb565::RED];
-        let mut bricks:Vec<Brick> = Vec::new();
+        let colors = [
+            Rgb565::GREEN,
+            Rgb565::YELLOW,
+            Rgb565::CSS_ORANGE,
+            Rgb565::RED,
+        ];
+        let mut bricks: Vec<Brick> = Vec::new();
         for i in 0..6 {
             for j in 0..4 {
                 bricks.push(Brick {
-                    bounds: Rectangle::new(Point::new(40 + i * 40 as i32, 20+ j * 20 as i32), Size::new(35, 15)),
+                    bounds: Rectangle::new(
+                        Point::new(40 + i * 40 as i32, 20 + j * 20 as i32),
+                        Size::new(35, 15),
+                    ),
                     color: colors[(j as usize) % colors.len()],
                     active: true,
                 })
@@ -81,22 +88,30 @@ impl GameView {
             if brick.active && !self.ball_bounds.intersection(&brick.bounds).is_zero_sized() {
                 brick.active = false;
                 // from the bottom
-                if old_ball_bounds.top_left.y > brick.bounds.top_left.y + brick.bounds.size.height as i32 {
+                if old_ball_bounds.top_left.y
+                    > brick.bounds.top_left.y + brick.bounds.size.height as i32
+                {
                     info!("from the bottom");
                     self.ball_velocity.y = -self.ball_velocity.y
                 }
                 // from the top
-                if (old_ball_bounds.top_left.y + old_ball_bounds.size.height as i32) < brick.bounds.top_left.y {
+                if (old_ball_bounds.top_left.y + old_ball_bounds.size.height as i32)
+                    < brick.bounds.top_left.y
+                {
                     info!("from the top");
                     self.ball_velocity.y = -self.ball_velocity.y
                 }
                 // from the right
-                if old_ball_bounds.top_left.x > brick.bounds.top_left.x + brick.bounds.size.width as i32 {
+                if old_ball_bounds.top_left.x
+                    > brick.bounds.top_left.x + brick.bounds.size.width as i32
+                {
                     info!("from the right");
                     self.ball_velocity.x = -self.ball_velocity.x
                 }
                 // from the left
-                if (old_ball_bounds.top_left.x + old_ball_bounds.size.width as i32) < brick.bounds.top_left.x {
+                if (old_ball_bounds.top_left.x + old_ball_bounds.size.width as i32)
+                    < brick.bounds.top_left.x
+                {
                     info!("from the left");
                     self.ball_velocity.x = -self.ball_velocity.x
                 }
@@ -122,12 +137,8 @@ impl GameView {
         if !inter.is_zero_sized() {
             self.ball_velocity = Point::new(self.ball_velocity.x, -self.ball_velocity.y);
         }
-
     }
 }
-
-
-
 
 #[main]
 fn main() -> ! {
@@ -152,7 +163,7 @@ fn main() -> ! {
 }
 
 impl GameView {
-    fn draw(&mut self, wrapper:&mut Wrapper) {
+    fn draw(&mut self, wrapper: &mut Wrapper) {
         self.count = self.count + 1;
 
         let old_ball_bounds = self.ball_bounds;
@@ -161,28 +172,50 @@ impl GameView {
         // draw background
         if self.count < 10 {
             let screen = Rectangle::new(Point::new(0, 0), Size::new(320, 240));
-            screen.into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK)).draw(&mut wrapper.display).unwrap();
+            screen
+                .into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK))
+                .draw(&mut wrapper.display)
+                .unwrap();
         }
 
         for brick in &self.bricks {
             if brick.active {
-                brick.bounds.into_styled(PrimitiveStyle::with_fill(brick.color)).draw(&mut wrapper.display).unwrap();
+                brick
+                    .bounds
+                    .into_styled(PrimitiveStyle::with_fill(brick.color))
+                    .draw(&mut wrapper.display)
+                    .unwrap();
             } else {
-                brick.bounds.into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK)).draw(&mut wrapper.display).unwrap();
+                brick
+                    .bounds
+                    .into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK))
+                    .draw(&mut wrapper.display)
+                    .unwrap();
             }
         }
 
-
         // draw the ball
-        old_ball_bounds.into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK)).draw(&mut wrapper.display).unwrap();
-        self.ball_bounds.into_styled(PrimitiveStyle::with_fill(Rgb565::MAGENTA)).draw(&mut wrapper.display).unwrap();
+        old_ball_bounds
+            .into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK))
+            .draw(&mut wrapper.display)
+            .unwrap();
+        self.ball_bounds
+            .into_styled(PrimitiveStyle::with_fill(Rgb565::MAGENTA))
+            .draw(&mut wrapper.display)
+            .unwrap();
 
         // draw the paddle
-        self.old_paddle.into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK)).draw(&mut wrapper.display).unwrap();
-        self.paddle.into_styled(PrimitiveStyle::with_fill(Rgb565::RED)).draw(&mut wrapper.display).unwrap();
+        self.old_paddle
+            .into_styled(PrimitiveStyle::with_fill(Rgb565::BLACK))
+            .draw(&mut wrapper.display)
+            .unwrap();
+        self.paddle
+            .into_styled(PrimitiveStyle::with_fill(Rgb565::RED))
+            .draw(&mut wrapper.display)
+            .unwrap();
     }
 
-    fn handle_input(&mut self, wrapper:&mut Wrapper) {
+    fn handle_input(&mut self, wrapper: &mut Wrapper) {
         self.old_paddle = self.paddle;
         let mut x = 0;
         if wrapper.left.changed {
