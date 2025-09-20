@@ -22,7 +22,7 @@ use esp_hal::{
 use esp_println::println;
 use esp_wifi;
 use esp_wifi::wifi::{ClientConfiguration, Configuration};
-use log::info;
+use log::{info, warn};
 
 use smoltcp::{
     iface::{SocketSet, SocketStorage},
@@ -38,8 +38,8 @@ fn panic(_: &core::panic::PanicInfo) -> ! {
 // For more information see: <https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/app_image_format.html#application-description>
 esp_bootloader_esp_idf::esp_app_desc!();
 
-const SSID: &str = "JEFF22G";
-const PASSWORD: &str = "Jefferson2022";
+const SSID: Option<&str> = option_env!("SSID");
+const PASSWORD: Option<&str> = option_env!("PASSWORD");
 
 #[main]
 fn main() -> ! {
@@ -56,6 +56,14 @@ fn main() -> ! {
     delay.delay_millis(1000);
 
     info!("power is on");
+
+
+    if SSID.is_none() {
+        warn!("SSID is none. did you forget to set the SSID environment variables");
+    }
+    if PASSWORD.is_none() {
+        warn!("PASSWORD is none. did you forget to set the PASSWORD environment variables");
+    }
 
     let mut rng = Rng::new(peripherals.RNG);
 
@@ -91,9 +99,10 @@ fn main() -> ! {
         .set_power_saving(esp_wifi::config::PowerSaveMode::None)
         .unwrap();
 
+    info!("creating client config");
     let client_config = Configuration::Client(ClientConfiguration {
-        ssid: SSID.try_into().unwrap(),
-        password: PASSWORD.try_into().unwrap(),
+        ssid: SSID.unwrap().into(),
+        password: PASSWORD.unwrap().into(),
         ..Default::default()
     });
     let res = controller.set_configuration(&client_config);

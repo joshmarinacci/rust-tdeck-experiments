@@ -16,16 +16,20 @@ the screen, and access the trackball.
 # Examples:
 
 * [hello](src/bin/hello.rs) Just prints hello world to the terminal. Use this to make sure your toolchain is up and running correctly.
+* [audio_wavforms](src/bin/audio_wavforms.rs) Generates and plays a sawtooth waveform to the speaker.
 * [battery](src/bin/battery.rs) Reads the current battery level from an analog pin.
+* [backlight](src/bin/backlight.rs) **New!** Cycles the display backlight from 0 to 100% using PWM.
+* [brickbreaker](src/bin/brickbreaker.rs) **New!** A simple brick breaking game using the trackball.
 * [display](src/bin/display.rs) Draws text and background colors to the screen
+* [flash](src/bin/flash.rs) **New!** Print size of internal flash and lists partitions in the partition table.
 * [info](src/bin/info.rs) Shows how to get info on the board including the chip name, free memory, and the MAC address.
 * [keyboard](src/bin/keyboard.rs). Poll the keyboard for keystrokes over the I2C bus.
 * [sdcard](src/bin/sdcard.rs) **New!** List files from the SD card. **NOTE** Requires and SD card formatted with FAT/MSFAT. ExtFat doesn't seem to work.
-* [flash](src/bin/flash.rs) **New!** Print size of internal flash and lists partitions in the partition table.
-* [term](src/bin/term.rs). Prints the typed text to the screen
+* [term](src/bin/term.rs). Prints the typed text to the screen.
 * [touch](src/bin/touch.rs). Polls for events from the touch screen. **New!**
 * [trackball](src/bin/trackball.rs). Polls the trackball for motion events and clicks.
 * [wifi_scan](src/bin/wifi_scan.rs). Turns on the wifi chip, scans for access points, then makes a simple HTTP request.
+* [wrapper](src/bin/wrapper.rs). **New!** Uses a wrapper struct to make working with the T-Deck hardware easier.
 
 # How to Run them
 
@@ -36,6 +40,10 @@ cargo run --bin info
 ```
 
 For the network examples you'll need to specify the SSID and PASSWORD in the code or on the command line.
+
+```shell
+SSID=MyCoolNetwork PASSWORD=BestPasswordEvar run --bin wifi_scan 
+```
 
 # What Versions?
 
