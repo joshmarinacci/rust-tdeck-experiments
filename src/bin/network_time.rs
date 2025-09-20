@@ -96,6 +96,11 @@ async fn main(spawner: Spawner) -> ! {
         esp_wifi::wifi::new(&esp_wifi_ctrl, peripherals.WIFI).unwrap();
     let wifi_interface = interfaces.sta;
 
+    use esp_hal::timer::systimer::SystemTimer;
+    let systimer = SystemTimer::new(peripherals.SYSTIMER);
+    esp_hal_embassy::init(systimer.alarm0);
+
+
     let config = embassy_net::Config::dhcpv4(Default::default());
     let net_seed = (rng.random() as u64) << 32 | rng.random() as u64;
     info!("made net seed {}", net_seed);
