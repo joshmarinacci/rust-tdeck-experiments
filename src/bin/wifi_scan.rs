@@ -20,8 +20,7 @@ use esp_hal::{
     timer::timg::TimerGroup,
 };
 use esp_println::println;
-use esp_wifi;
-use esp_wifi::wifi::{ClientConfiguration, Configuration};
+use esp_radio::wifi::{ClientConfig, ModeConfig, ScanConfig};
 use log::{info, warn};
 
 use smoltcp::{
@@ -65,15 +64,15 @@ fn main() -> ! {
         warn!("PASSWORD is none. did you forget to set the PASSWORD environment variables");
     }
 
-    let mut rng = Rng::new(peripherals.RNG);
+    let mut rng = Rng::new();
 
     // init the wifi chip
     let timg0 = TimerGroup::new(peripherals.TIMG0);
-    let esp_wifi_ctrl = esp_wifi::init(timg0.timer0, rng.clone()).unwrap();
+    let esp_radio_ctrl = esp_radio::init().unwrap();
 
     // access the wifi controller
     let (mut controller, interfaces) =
-        esp_wifi::wifi::new(&esp_wifi_ctrl, peripherals.WIFI).unwrap();
+        esp_radio::wifi::new(&esp_radio_ctrl, peripherals.WIFI, Default::default()).unwrap();
 
     let mut device = interfaces.sta;
     let iface = create_interface(&mut device);
@@ -96,23 +95,23 @@ fn main() -> ! {
 
     // disable power savings
     controller
-        .set_power_saving(esp_wifi::config::PowerSaveMode::None)
+        .set_power_saving(esp_radio::wifi::PowerSaveMode::None)
         .unwrap();
 
     info!("creating client config");
-    let client_config = Configuration::Client(ClientConfiguration {
-        ssid: SSID.unwrap().into(),
-        password: PASSWORD.unwrap().into(),
-        ..Default::default()
-    });
-    let res = controller.set_configuration(&client_config);
+    let client_config = ModeConfig::Client(ClientConfig::default()
+        .with_ssid(SSID.unwrap().into())
+        .with_password(PASSWORD.unwrap().into())
+    );
+
+    let res = controller.set_config(&client_config);
     println!("wifi_set_configuration returned {:?}", res);
 
     controller.start().unwrap();
     println!("is wifi started: {:?}", controller.is_started());
 
     println!("Start Wifi Scan");
-    let res = controller.scan_n(10); // 10 sec timeout?
+    let res = controller.scan_with_config(ScanConfig::default());
     if let Ok(res) = res {
         for ap in res {
             println!("{:?}", ap);
@@ -197,7 +196,7 @@ fn timestamp() -> smoltcp::time::Instant {
     )
 }
 
-pub fn create_interface(device: &mut esp_wifi::wifi::WifiDevice) -> smoltcp::iface::Interface {
+pub fn create_interface(device: &mut esp_radio::wifi::WifiDevice) -> smoltcp::iface::Interface {
     // users could create multiple instances but since they only have one WifiDevice
     // they probably can't do anything bad with that
     smoltcp::iface::Interface::new(

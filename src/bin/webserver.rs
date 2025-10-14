@@ -16,31 +16,34 @@
 #![no_std]
 #![no_main]
 
-use blocking_network_stack::Stack;
 use embedded_io::*;
+use blocking_network_stack::Stack;
+use embassy_executor::Spawner;
 use esp_alloc as _;
 use esp_backtrace as _;
 use esp_hal::{
     clock::CpuClock,
-    main,
     rng::Rng,
     time::{self, Duration},
     timer::timg::TimerGroup,
 };
 use esp_println::{print, println};
-use esp_wifi::{
-    init,
+use esp_radio::{
     wifi::{
-        event::{self, EventExt},
-        AccessPointConfiguration, Configuration,
+        event::{
+            ApStart, ApStaConnected, ApStaDisconnected
+        },
+        ModeConfig,
+        AccessPointConfig,
     },
 };
+use esp_radio::wifi::event::EventExt;
 use smoltcp::iface::{SocketSet, SocketStorage};
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
-#[main]
-fn main() -> ! {
+#[esp_rtos::main]
+async fn main(spawner: Spawner) -> ! {
     esp_println::logger::init_logger_from_env();
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
@@ -48,31 +51,32 @@ fn main() -> ! {
     esp_alloc::heap_allocator!(size: 72 * 1024);
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
+    esp_rtos::start(timg0.timer0);
 
     // Set event handlers for wifi before init to avoid missing any.
     let mut connections = 0u32;
-    _ = event::ApStart::replace_handler(|_| esp_println::println!("ap start event"));
-    event::ApStaconnected::update_handler(move |event| {
+    _ = ApStart::replace_handler(|_| esp_println::println!("ap start event"));
+    ApStaConnected::update_handler(move |event| {
         connections += 1;
-        esp_println::println!("connected {}, mac: {:?}", connections, event.0.mac);
+        esp_println::println!("connected {}, mac: {:?}", connections, event.mac());
     });
-    event::ApStaconnected::update_handler(|event| {
-        esp_println::println!("connected aid: {}", event.0.aid);
+    ApStaConnected::update_handler(|event| {
+        esp_println::println!("connected aid: {}", event.aid());
     });
-    event::ApStadisconnected::update_handler(|event| {
+    ApStaDisconnected::update_handler(|event| {
         esp_println::println!(
             "disconnected mac: {:?}, reason: {:?}",
-            event.0.mac,
-            event.0.reason
+            event.mac(),
+            event.reason()
         );
     });
 
-    let mut rng = Rng::new(peripherals.RNG);
+    let rng = Rng::new();
 
-    let esp_wifi_ctrl = init(timg0.timer0, rng.clone()).unwrap();
+    let esp_wifi_ctrl = esp_radio::init().unwrap();
 
     let (mut controller, interfaces) =
-        esp_wifi::wifi::new(&esp_wifi_ctrl, peripherals.WIFI).unwrap();
+        esp_radio::wifi::new(&esp_wifi_ctrl, peripherals.WIFI, Default::default()).unwrap();
 
     let mut device = interfaces.ap;
     let iface = create_interface(&mut device);
@@ -83,11 +87,8 @@ fn main() -> ! {
     let socket_set = SocketSet::new(&mut socket_set_entries[..]);
     let mut stack = Stack::new(iface, device, socket_set, now, rng.random());
 
-    let client_config = Configuration::AccessPoint(AccessPointConfiguration {
-        ssid: "esp-wifi".into(),
-        ..Default::default()
-    });
-    let res = controller.set_configuration(&client_config);
+    let client_config =  ModeConfig::AccessPoint(AccessPointConfig::default().with_ssid("esp-wifi".into()));
+    let res = controller.set_config(&client_config);
     println!("wifi_set_configuration returned {:?}", res);
 
     controller.start().unwrap();
@@ -202,7 +203,7 @@ fn timestamp() -> smoltcp::time::Instant {
     )
 }
 
-pub fn create_interface(device: &mut esp_wifi::wifi::WifiDevice) -> smoltcp::iface::Interface {
+pub fn create_interface(device: &mut esp_radio::wifi::WifiDevice) -> smoltcp::iface::Interface {
     // users could create multiple instances but since they only have one WifiDevice
     // they probably can't do anything bad with that
     smoltcp::iface::Interface::new(

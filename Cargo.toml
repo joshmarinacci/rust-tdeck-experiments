@@ -8,34 +8,37 @@ name = "rust-tdeck-experiments"
 path = "./src/bin/hello.rs"
 
 [dependencies]
-embedded-io = { version = "0.6.1" , default-features = false}
-blocking-network-stack = { git = "https://github.com/bjoernQ/blocking-network-stack.git", rev = "b3ecefc222d8806edd221f266999ca339c52d34e" }
+esp-alloc = "0.9.0"
+esp-backtrace = { version = "0.18.0", features = ["panic-handler", "esp32s3", "println"] }
+esp-bootloader-esp-idf = {  version = "0.3.0" , features = ["esp32s3"]}
+esp-hal = { version = "1.0.0-rc.1", features = ["esp32s3", "unstable","log-04"] }
+esp-println = { version = "0.16.0", features = ["esp32s3", "log-04"] }
+esp-rtos = { version = "0.1.0", features = ["esp32s3","esp-radio","embassy","log-04"] }
+esp-radio = { version = "0.16.0",features = ["esp32s3", "wifi","wifi-eap","unstable","smoltcp","log-04"] }
+esp-storage = {  version="0.8.0", features = ["esp32s3"] }
+
+embassy-executor = {  version = "0.9.0", features = ["log"] }
+embassy-net = {  version = "0.7.0" , features = ["udp", "dns","dhcpv4", "medium-ethernet"]}
+embassy-time = "0.5.0"
+
 embedded-graphics = "0.8.1"
 embedded-hal-bus = "0.3.0"
-esp-alloc = "0.8.0"
-esp-bootloader-esp-idf = {  version = "0.2.0" , features = ["esp32s3"]}
-esp-hal = { version = "1.0.0-rc.0", features = ["esp32s3", "unstable","log-04"] }
-mipidsi = "0.9.0"
-esp-println = { version = "0.15.0", features = ["esp32s3", "log-04"] }
-esp-wifi = { version = "0.15.0", features = ["esp32s3", "wifi", "smoltcp"]}
-log = { version = "0.4.27" }
-smoltcp = { version = "0.12.0", default-features = false, features = ['medium-ethernet','socket-raw']}
+embedded-io = { version = "0.6.1" , default-features = false}
 embedded-sdmmc = {  version = "0.9.0", features = ["log"] }
-gt911 = "0.3.0"
-esp-hal-embassy = {  version = "0.9.0", features = ["esp32s3"] }
-embassy-executor = {  version = "0.7.0", features = ["log", "task-arena-size-65536"] }
-esp-backtrace = { version = "0.17.0", features = ["exception-handler","panic-handler", "esp32s3", "println"] }
-micromath = "2.1.0"
-esp-storage = {  version="0.7.0", features = ["esp32s3"] }
 embedded-storage = "0.3.1"
+
+blocking-network-stack = { git = "https://github.com/bjoernQ/blocking-network-stack.git", rev = "b3ecefc222d8806edd221f266999ca339c52d34e" }
+mipidsi = "0.9.0"
+log = { version = "0.4.17" }
+smoltcp = { version = "0.12.0", default-features = false, features = ['medium-ethernet','socket-raw']}
+gt911 = "0.3.0"
+micromath = "2.1.0"
 byteorder = {  version = "1.5.0", default-features = false }
 heapless = "0.8.0"
-static_cell = { version = "2.1.1", features = ["nightly"] }
+static_cell = { version = "2.1.0", features = ["nightly"] }
 nanomp3 = {  version="0.1.1" }
-embassy-time = "0.5.0"
-embassy-net = {  version = "0.7.1" , features = ["udp", "dns","dhcpv4", "medium-ethernet"]}
 sntpc = { version = "0.6.0" ,  default-features = false, features = ["embassy-socket",]}
-jiff = { version = "0.2.15", default-features = false, features = ["static"] }
+jiff = { version = "0.2.10", default-features = false, features = ["static"] }
 
 [profile.dev]
 # Rust debug is too slow.
