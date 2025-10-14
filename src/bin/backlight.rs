@@ -28,7 +28,7 @@ use embedded_hal_bus::spi::ExclusiveDevice;
 use esp_hal::clock::CpuClock;
 use esp_hal::delay::Delay;
 use esp_hal::gpio::Level::{High, Low};
-use esp_hal::gpio::{Input, InputConfig, Output, OutputConfig, Pull};
+use esp_hal::gpio::{DriveMode, Input, InputConfig, Output, OutputConfig, Pull};
 use esp_hal::main;
 use esp_hal::ledc::{channel, timer, LSGlobalClkSource, Ledc, LowSpeed};
 use esp_hal::ledc::channel::ChannelIFace;
@@ -120,7 +120,7 @@ fn main() -> ! {
         .configure(channel::config::Config {
             timer: &lstimer0,
             duty_pct: 0,
-            pin_config: channel::config::PinConfig::PushPull,
+            drive_mode: DriveMode::PushPull,
         }).unwrap();
 
 

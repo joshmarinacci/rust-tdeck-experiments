@@ -24,8 +24,6 @@ use esp_println::println;
 use esp_radio::Controller;
 use esp_radio::wifi::{ClientConfig, ModeConfig, ScanConfig, WifiController, WifiDevice, WifiEvent, WifiStaState};
 use log::{error, info, warn};
-use smoltcp::socket::udp::PacketMetadata;
-use smoltcp::wire::DnsQueryType;
 use sntpc::{get_time, NtpContext, NtpTimestampGenerator};
 use esp_alloc as _;
 use esp_backtrace as _;
