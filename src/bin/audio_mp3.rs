@@ -22,7 +22,7 @@ use esp_hal::delay::Delay;
 use esp_hal::dma::DmaTransferTx;
 use esp_hal::gpio::Level::High;
 use esp_hal::gpio::{Input, InputConfig, Output, OutputConfig, Pull};
-use esp_hal::i2s::master::{DataFormat, Error, I2s, I2sTx, Standard};
+use esp_hal::i2s::master::{Config, DataFormat, Error, I2s, I2sTx};
 use esp_hal::spi::master::{Config as SpiConfig, Spi};
 use esp_hal::time::Rate;
 use esp_hal::timer::timg::TimerGroup;
@@ -199,13 +199,13 @@ impl embedded_sdmmc::TimeSource for DummyTime {
 }
 
 // ----------------- MAIN -----------------
-#[esp_hal_embassy::main]
+#[esp_rtos::main]
 async fn main(spawnerr: Spawner) -> ! {
     esp_println::logger::init_logger_from_env();
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
     let timer_g1 = TimerGroup::new(peripherals.TIMG1);
-    esp_hal_embassy::init(timer_g1.timer0);
+    esp_rtos::start(timer_g1.timer0);
     esp_alloc::heap_allocator!(size: 96 * 1024);
     let delay = Delay::new();
 
@@ -275,14 +275,13 @@ async fn main(spawnerr: Spawner) -> ! {
     // --- I2S0 TX to built-in speaker pins ---
     let i2s = I2s::new(
         peripherals.I2S0,
-        Standard::Philips,
-        DataFormat::Data16Channel16,
-        Rate::from_hz(44100),
         peripherals.DMA_CH0,
-    );
-    let mut i2s_tx = i2s
-        .into_async()
-        .i2s_tx
+        Config::new_tdm_philips()
+            .with_data_format(DataFormat::Data16Channel16)
+            .with_sample_rate(Rate::from_hz(44100))
+    ).unwrap().into_async();
+
+    let mut i2s_tx = i2s.i2s_tx
         .with_bclk(peripherals.GPIO7)
         .with_ws(peripherals.GPIO5)
         .with_dout(peripherals.GPIO6)

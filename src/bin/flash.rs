@@ -17,7 +17,7 @@ and prints out the partition table.
 use embedded_storage::ReadStorage;
 use esp_bootloader_esp_idf::partitions;
 use esp_hal::clock::CpuClock;
-use esp_hal::main;
+use esp_hal::{main, peripherals};
 use esp_hal::time::{Duration, Instant};
 use esp_storage::FlashStorage;
 use log::info;
@@ -37,11 +37,11 @@ extern crate alloc;
 fn main() -> ! {
     esp_println::logger::init_logger_from_env();
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
-    esp_hal::init(config);
+    let peripherals = esp_hal::init(config);
 
     esp_alloc::heap_allocator!(size: 72 * 1024);
 
-    let mut flash = FlashStorage::new();
+    let mut flash = FlashStorage::new(peripherals.FLASH);
     info!("Flash size = {}", flash.capacity());
 
     let mut pt_mem = [0u8; partitions::PARTITION_TABLE_MAX_LEN];

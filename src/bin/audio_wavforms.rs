@@ -44,11 +44,12 @@ use esp_hal::gpio::Level::High;
 use esp_hal::gpio::{Output, OutputConfig};
 use esp_hal::{
     dma_buffers,
-    i2s::master::{DataFormat, I2s, Standard},
+    i2s::master::{DataFormat, I2s},
     time::Rate,
     timer::timg::TimerGroup,
 };
-
+use esp_hal::i2s::master::Config;
+use esp_rtos::main;
 use log::{error, info};
 use micromath::F32Ext;
 
@@ -111,14 +112,14 @@ impl Iterator for SawtoothWaveSource {
     }
 }
 
-#[esp_hal_embassy::main]
+#[esp_rtos::main]
 async fn main(spawner: Spawner) {
     esp_println::logger::init_logger_from_env();
     info!("Start");
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
     let peripherals = esp_hal::init(config);
     let timer_g1 = TimerGroup::new(peripherals.TIMG1);
-    esp_hal_embassy::init(timer_g1.timer0);
+    esp_rtos::start(timer_g1.timer0);
     esp_alloc::heap_allocator!(size: 72 * 1024);
     info!("heap is {}", esp_alloc::HEAP.stats());
     let mut board_power = Output::new(peripherals.GPIO10, High, OutputConfig::default());
@@ -126,17 +127,15 @@ async fn main(spawner: Spawner) {
     let delay = Delay::new();
     delay.delay_millis(1000);
 
-    let dma_channel = peripherals.DMA_CH0;
     let (_, _, tx_buffer, tx_descriptors) = dma_buffers!(0, 32000);
 
     let i2s = I2s::new(
         peripherals.I2S0,
-        Standard::Philips,
-        DataFormat::Data16Channel16,
-        Rate::from_hz(44100),
-        dma_channel,
-    )
-    .into_async();
+        peripherals.DMA_CH0,
+        Config::new_tdm_philips()
+            .with_data_format(DataFormat::Data16Channel16)
+            .with_sample_rate(Rate::from_hz(44100))
+    ).unwrap().into_async();
 
     let i2s_tx = i2s
         .i2s_tx

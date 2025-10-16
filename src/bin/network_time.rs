@@ -11,28 +11,23 @@
 #![no_main]
 extern crate alloc;
 
-use alloc::format;
-use alloc::string::ToString;
 use core::net::{IpAddr, SocketAddr};
-
 use embassy_executor::Spawner;
-use embassy_net::{
-    Runner,
-    Stack,
-    StackResources,
-    dns::DnsQueryType,
-    udp::{PacketMetadata, UdpSocket},
-};
+use embassy_net::{Runner, Stack, StackResources};
+use embassy_net::dns::DnsQueryType;
+use embassy_net::udp::{PacketMetadata, UdpSocket};
 use embassy_time::{Duration, Timer};
+use esp_hal::clock::CpuClock;
+use esp_hal::rng::Rng;
+use esp_hal::rtc_cntl::Rtc;
+use esp_hal::timer::timg::TimerGroup;
+use esp_println::println;
+use esp_radio::Controller;
+use esp_radio::wifi::{ClientConfig, ModeConfig, ScanConfig, WifiController, WifiDevice, WifiEvent, WifiStaState};
+use log::{error, info, warn};
+use sntpc::{get_time, NtpContext, NtpTimestampGenerator};
 use esp_alloc as _;
 use esp_backtrace as _;
-use esp_hal::{clock::CpuClock, rng::Rng, rtc_cntl::Rtc, timer::timg::TimerGroup};
-use esp_println::println;
-use esp_wifi::{wifi::{ClientConfiguration, Configuration, ScanConfig, WifiController, WifiDevice, WifiEvent}, EspWifiController};
-use esp_wifi::wifi::ScanTypeConfig::Active;
-use esp_wifi::wifi::WifiState;
-use log::{error, info, warn};
-use sntpc::{NtpContext, NtpTimestampGenerator, get_time};
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
@@ -74,7 +69,7 @@ impl NtpTimestampGenerator for Timestamp<'_> {
     }
 }
 
-#[esp_hal_embassy::main]
+#[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
     esp_println::logger::init_logger_from_env();
     let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
@@ -82,25 +77,17 @@ async fn main(spawner: Spawner) -> ! {
     let rtc = Rtc::new(peripherals.LPWR);
 
     esp_alloc::heap_allocator!(size: 72 * 1024);
-    let mut rng = Rng::new(peripherals.RNG);
     let timer_g0 = TimerGroup::new(peripherals.TIMG0);
+    esp_rtos::start(timer_g0.timer0);
 
     info!("made timer");
-    // let esp_wifi_ctrl = esp_wifi::init(timer_g0.timer0, rng.clone()).unwrap();
-    let esp_wifi_ctrl = &*mk_static!(
-        EspWifiController<'static>,
-        esp_wifi::init(timer_g0.timer0, rng.clone()).unwrap()
-    );
-    info!("making controller");
-    let (wifi_controller, interfaces) =
-        esp_wifi::wifi::new(&esp_wifi_ctrl, peripherals.WIFI).unwrap();
-    let wifi_interface = interfaces.sta;
+    // let esp_radio_ctrl = esp_radio::init().unwrap();
+    let esp_radio_ctrl = &*mk_static!(Controller<'static>, esp_radio::init().unwrap());
 
-    use esp_hal::timer::systimer::SystemTimer;
-    let systimer = SystemTimer::new(peripherals.SYSTIMER);
-    esp_hal_embassy::init(systimer.alarm0);
+    let (controller, interfaces) =
+        esp_radio::wifi::new(&esp_radio_ctrl, peripherals.WIFI, Default::default()).unwrap();
 
-
+    let rng: Rng = Rng::new();
     let config = embassy_net::Config::dhcpv4(Default::default());
     let net_seed = (rng.random() as u64) << 32 | rng.random() as u64;
     info!("made net seed {}", net_seed);
@@ -110,14 +97,14 @@ async fn main(spawner: Spawner) -> ! {
     info!("init-ing the network stack");
     // Init network stack
     let (stack, wifi_runner) = embassy_net::new(
-        wifi_interface,
+        interfaces.sta,
         config,
         mk_static!(StackResources<3>, StackResources::<3>::new()),
         net_seed,
     );
 
     info!("spawning connection");
-    spawner.spawn(connection(wifi_controller)).ok();
+    spawner.spawn(connection(controller)).ok();
     info!("spawning net task");
     spawner.spawn(net_task(wifi_runner)).ok();
 
@@ -236,8 +223,8 @@ async fn connection(mut controller: WifiController<'static>) {
     info!("start connection task");
     info!("Device capabilities: {:?}", controller.capabilities());
     loop {
-        match esp_wifi::wifi::wifi_state() {
-            WifiState::StaConnected => {
+        match esp_radio::wifi::sta_state() {
+            WifiStaState::Connected => {
                 // wait until we're no longer connected
                 info!("waiting to be disconnected");
                 controller.wait_for_event(WifiEvent::StaDisconnected).await;
@@ -245,7 +232,7 @@ async fn connection(mut controller: WifiController<'static>) {
             }
             _ => {}
         }
-        info!("wifi state is {:?}", esp_wifi::wifi::wifi_state());
+        // info!("wifi state is {:?}", esp_radio::wifi::wifi_state());
         // DISCONNECTED
         info!(
             "we are disconnected. is started = {:?}",
@@ -258,10 +245,11 @@ async fn connection(mut controller: WifiController<'static>) {
             if PASSWORD.is_none() {
                 warn!("PASSWORD is none. did you forget to set the PASSWORD environment variables");
             }
-            let client_config = Configuration::Client(ClientConfiguration {
-                ..Default::default()
-            });
-            controller.set_configuration(&client_config).unwrap();
+            let client_config = ModeConfig::Client(ClientConfig::default()
+                .with_ssid(SSID.unwrap().into())
+                .with_password(PASSWORD.unwrap().into())
+                );
+            controller.set_config(&client_config).unwrap();
             info!("Starting wifi");
             // initializing stack
             controller.start_async().await.unwrap();
@@ -269,69 +257,24 @@ async fn connection(mut controller: WifiController<'static>) {
         }
         info!("Scan");
         // scan for longer and show hidden
-        let active = Active {
-            min: core::time::Duration::from_millis(50),
-            max: core::time::Duration::from_millis(100),
-        };
-        // scanning
+        let scan_config = ScanConfig::default().with_max(10);
         let mut result = controller
-            .scan_with_config_async(ScanConfig {
-                show_hidden: true,
-                scan_type: active,
-                ..Default::default()
-            })
+            .scan_with_config_async(scan_config)
             .await
             .unwrap();
         // sort by best signal strength first
         result.sort_by(|a, b| a.signal_strength.cmp(&b.signal_strength));
         result.reverse();
-        // for ap in result.iter() {
-        //     // info!("found AP: {:?}", ap);
-        // }
-        // pick the first that matches the passed in SSID
-        let ap = result
-            .iter()
-            .filter(|ap| ap.ssid.eq_ignore_ascii_case(SSID.unwrap()))
-            .next();
-        if let Some(ap) = ap {
-            info!("using the AP {:?}", ap);
-            // set the config to use for connecting
-            controller
-                .set_configuration(&Configuration::Client(ClientConfiguration {
-                    ssid: ap.ssid.to_string(),
-                    password: PASSWORD.unwrap().into(),
-                    ..Default::default()
-                }))
-                .unwrap();
-
-            info!("About to connect");
-            match controller.connect_async().await {
-                Ok(_) => {
-                    info!("Wifi connected!");
-                    loop {
-                        info!("checking if we are still connected");
-                        if let Ok(conn) = controller.is_connected() {
-                            if conn {
-                                info!("Connected successfully");
-                                info!("sleep until we aren't connected anymore");
-                                Timer::after(Duration::from_millis(5000)).await
-                            } else {
-                                break;
-                            }
-                        } else {
-                            break;
-                        }
-                    }
-                }
-                Err(e) => {
-                    info!("Failed to connect to wifi: {e:?}");
-                    Timer::after(Duration::from_millis(5000)).await
-                }
+        for ap in result.iter() {
+            info!("found AP: {:?}", ap);
+        }
+        info!("About to connect");
+        match controller.connect_async().await {
+            Ok(_) => info!("Wifi connected!"),
+            Err(e) => {
+                info!("Failed to connect to wifi: {e:?}");
+                Timer::after(Duration::from_millis(5000)).await
             }
-        } else {
-            let ssid = SSID.unwrap();
-            info!("did not find the ap for {ssid}");
-            info!("looping around");
         }
         Timer::after(Duration::from_millis(1000)).await;
     }

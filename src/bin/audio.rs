@@ -10,9 +10,10 @@ use esp_hal::clock::CpuClock;
 use esp_hal::delay::Delay;
 use esp_hal::gpio::Level::High;
 use esp_hal::gpio::{Output, OutputConfig};
-use esp_hal::i2s::master::{DataFormat, I2s, Standard};
+use esp_hal::i2s::master::{Config, DataFormat, I2s};
 use esp_hal::time::Rate;
 use esp_hal::{dma_buffers, main};
+use esp_hal::timer::timg::TimerGroup;
 use log::info;
 
 #[panic_handler]
@@ -48,8 +49,8 @@ fn main() -> ! {
     let delay = Delay::new();
     delay.delay_millis(1000);
 
-    // let timg0 = TimerGroup::new(peripherals.TIMG0);
-    // esp_hal_embassy::init(timg0.timer0);
+    let timg0 = TimerGroup::new(peripherals.TIMG0);
+    esp_rtos::start(timg0.timer0);
 
     //     if #[cfg(any(feature = "esp32", feature = "esp32s2"))] {
     //         let dma_channel = peripherals.DMA_I2S0;
@@ -58,24 +59,20 @@ fn main() -> ! {
     //     }
     // }
 
-    let dma_channel = peripherals.DMA_CH0;
+    // let dma_channel = peripherals.DMA_CH0;
     // info!("peripherals {:?}",peripherals);
 
     let (_, _, tx_buffer, tx_descriptors) = dma_buffers!(0, 32000 * 2);
 
     let i2s = I2s::new(
         peripherals.I2S0,
-        Standard::Philips,
-        DataFormat::Data16Channel16,
-        Rate::from_hz(44100),
-        dma_channel,
+        peripherals.DMA_CH0,
+        Config::new_tdm_philips()
+            .with_data_format(DataFormat::Data16Channel16)
+            .with_sample_rate(Rate::from_hz(44100))
     );
-    // .into_async();
-
-    // #define BOARD_I2S_WS        5
-    // #define BOARD_I2S_BCK       7
-    // #define BOARD_I2S_DOUT      6
-    let mut i2s_tx = i2s
+    
+    let mut i2s_tx = i2s.unwrap()
         .i2s_tx
         .with_bclk(peripherals.GPIO7)
         .with_ws(peripherals.GPIO5)
