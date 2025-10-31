@@ -49,8 +49,8 @@ SSID=MyCoolNetwork PASSWORD=BestPasswordEvar run --bin wifi_scan
 # What Versions?
 
 The esp_hal project recently started focusing on stability and moving towards a 1.0 release.  These examples
-work on the latest version of esp_hal, which as of the time of this writing (August 2025) is
-[v1.0.0-rc.0](https://github.com/esp-rs/esp-hal/releases/tag/esp-hal-v1.0.0-rc.0). I will do my best
+work on the latest version of esp_hal, which as of the time of this writing (October 2025) is
+[v1.0.0](https://github.com/esp-rs/esp-hal/releases/tag/esp-hal-v1.0.0). I will do my best
 to keep them up to date.
 
 # Why?
